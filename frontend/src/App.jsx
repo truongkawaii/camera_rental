@@ -194,19 +194,19 @@ function AuthGate() {
               title: 'CRM & Nhân sự',
               items: [
                 { to: '/customers', icon: <Users size={18} />, label: 'Khách Hàng', visible: true },
-                { to: '/collaborators', icon: <GitBranch size={18} />, label: 'Tuyến Cộng Tác', visible: isAdmin || isCameraManager },
+                { to: '/collaborators', icon: <GitBranch size={18} />, label: 'Tuyến Cộng Tác', visible: isAdmin },
                 { to: '/users', icon: <Users size={18} />, label: 'Tài Khoản', visible: isAdmin },
               ]
             },
             {
               title: 'Tài chính',
-              visible: !isSaler && !isDriver,
+              visible: isAdmin,
               items: [
                 { to: '/payroll', icon: <Wallet size={18} />, label: 'Bảng Lương', visible: isAdmin },
                 { to: '/sale-admin-transfers', icon: <Send size={18} />, label: 'Sổ Chuyển Tiền', visible: isAdmin },
                 { to: '/ads-costs', icon: <Megaphone size={18} />, label: 'Chi phí Quảng cáo', visible: isAdmin },
                 { to: '/misc-costs', icon: <Receipt size={18} />, label: 'Chi phí Phát sinh', visible: isAdmin },
-                { to: '/commission-configs', icon: <DollarSign size={18} />, label: 'Cấu Hình Hoa Hồng', visible: isAdmin || isCameraManager },
+                { to: '/commission-configs', icon: <DollarSign size={18} />, label: 'Cấu Hình Hoa Hồng', visible: isAdmin },
               ]
             },
             {
@@ -301,8 +301,8 @@ function AuthGate() {
             <Route path="/ads-costs" element={isAdmin ? <AdsCosts key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/misc-costs" element={isAdmin ? <MiscCosts key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/sale-transfers" element={isSaler ? <SaleTransfer key={activeRole} /> : <Navigate to="/" replace />} />
-            <Route path="/commission-configs" element={(isAdmin || isCameraManager) ? <CommissionConfigs key={activeRole} /> : <Navigate to="/rentals" replace />} />
-            <Route path="/collaborators" element={(isAdmin || isCameraManager) ? <CollaboratorHierarchy key={activeRole} /> : <Navigate to="/rentals" replace />} />
+            <Route path="/commission-configs" element={isAdmin ? <CommissionConfigs key={activeRole} /> : <Navigate to="/rentals" replace />} />
+            <Route path="/collaborators" element={isAdmin ? <CollaboratorHierarchy key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/performance" element={<Performance key={activeRole} />} />
             <Route path="/investors" element={<Investors key={activeRole} />} />
             <Route path="/activity"  element={isAdmin ? <ActivityLog key={activeRole} /> : <Navigate to="/rentals" replace />} />

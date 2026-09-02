@@ -1,6 +1,6 @@
 const express = require('express');
 const { pool } = require('../utils/db');
-const { authenticate, requireAdminOrManager } = require('../middleware/auth');
+const { authenticate, requireAdmin } = require('../middleware/auth');
 const { logActivity } = require('../utils/logger');
 
 const router = express.Router();
@@ -131,7 +131,7 @@ const validateShareLimit = async (client, childUserId, shareRatePercent, effecti
   return existing + Number(shareRatePercent) <= 100;
 };
 
-router.get('/', authenticate, requireAdminOrManager, async (req, res) => {
+router.get('/', authenticate, requireAdmin, async (req, res) => {
   try {
     const childUserId = Number(req.query.child_user_id || 0);
     const params = [];
@@ -165,7 +165,7 @@ router.get('/', authenticate, requireAdminOrManager, async (req, res) => {
   }
 });
 
-router.post('/', authenticate, requireAdminOrManager, async (req, res) => {
+router.post('/', authenticate, requireAdmin, async (req, res) => {
   const {
     child_user_id,
     parent_user_id,
@@ -285,7 +285,7 @@ router.post('/', authenticate, requireAdminOrManager, async (req, res) => {
   }
 });
 
-router.patch('/:id', authenticate, requireAdminOrManager, async (req, res) => {
+router.patch('/:id', authenticate, requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
     return res.status(400).json({ error: 'Invalid hierarchy id' });
@@ -429,7 +429,7 @@ router.patch('/:id', authenticate, requireAdminOrManager, async (req, res) => {
   }
 });
 
-router.delete('/:id', authenticate, requireAdminOrManager, async (req, res) => {
+router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
     return res.status(400).json({ error: 'Invalid hierarchy id' });

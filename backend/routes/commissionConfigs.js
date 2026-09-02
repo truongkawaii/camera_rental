@@ -1,6 +1,6 @@
 const express = require('express');
 const { pool } = require('../utils/db');
-const { authenticate, requireAdminOrManager } = require('../middleware/auth');
+const { authenticate, requireAdmin } = require('../middleware/auth');
 const { logActivity } = require('../utils/logger');
 
 const router = express.Router();
@@ -12,7 +12,7 @@ const normalizeRate = (value) => {
 };
 
 // ─── GET all rule sets (with assigned_user_count) ────────────────────────────
-router.get('/', authenticate, requireAdminOrManager, async (req, res) => {
+router.get('/', authenticate, requireAdmin, async (req, res) => {
   try {
     const ruleType = req.query.rule_type || null;
     let whereClause = 'WHERE rs.is_deleted = false';
@@ -87,7 +87,7 @@ router.get('/active', authenticate, async (req, res) => {
 });
 
 // ─── GET all rule-set-user assignments (for Users page, avoids N+1) ──────────
-router.get('/all-users', authenticate, requireAdminOrManager, async (req, res) => {
+router.get('/all-users', authenticate, requireAdmin, async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT rsu.user_id, rsu.rule_set_id, rsu.role_name AS assigned_role,
@@ -105,7 +105,7 @@ router.get('/all-users', authenticate, requireAdminOrManager, async (req, res) =
 });
 
 // ─── GET users assigned to a rule set (optionally filtered by role_name) ─────
-router.get('/:id/users', authenticate, requireAdminOrManager, async (req, res) => {
+router.get('/:id/users', authenticate, requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
     return res.status(400).json({ error: 'Invalid rule set id' });
@@ -144,7 +144,7 @@ router.get('/:id/users', authenticate, requireAdminOrManager, async (req, res) =
 });
 
 // ─── Assign a user to a rule set for a specific role (saler/driver) ──────────
-router.post('/:id/users', authenticate, requireAdminOrManager, async (req, res) => {
+router.post('/:id/users', authenticate, requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
     return res.status(400).json({ error: 'Invalid rule set id' });
@@ -233,7 +233,7 @@ router.post('/:id/users', authenticate, requireAdminOrManager, async (req, res) 
 });
 
 // ─── Remove a user from a rule set for a specific role ───────────────────────
-router.delete('/:id/users/:userId', authenticate, requireAdminOrManager, async (req, res) => {
+router.delete('/:id/users/:userId', authenticate, requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   const userId = Number(req.params.userId);
 
@@ -283,7 +283,7 @@ router.delete('/:id/users/:userId', authenticate, requireAdminOrManager, async (
 });
 
 // ─── CREATE a new rule set ────────────────────────────────────────────────────
-router.post('/', authenticate, requireAdminOrManager, async (req, res) => {
+router.post('/', authenticate, requireAdmin, async (req, res) => {
   const {
     name,
     rule_type = 'saler',
@@ -345,7 +345,7 @@ router.post('/', authenticate, requireAdminOrManager, async (req, res) => {
 });
 
 // ─── PATCH a rule set (name, dates, is_active) ───────────────────────────────
-router.patch('/:id', authenticate, requireAdminOrManager, async (req, res) => {
+router.patch('/:id', authenticate, requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
     return res.status(400).json({ error: 'Invalid rule set id' });
@@ -441,7 +441,7 @@ router.patch('/:id', authenticate, requireAdminOrManager, async (req, res) => {
 });
 
 // ─── ACTIVATE a rule set (deactivates others of the SAME rule_type) ──────────
-router.patch('/:id/activate', authenticate, requireAdminOrManager, async (req, res) => {
+router.patch('/:id/activate', authenticate, requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
     return res.status(400).json({ error: 'Invalid rule set id' });
@@ -497,7 +497,7 @@ router.patch('/:id/activate', authenticate, requireAdminOrManager, async (req, r
 });
 
 // ─── DEACTIVATE a rule set ───────────────────────────────────────────────────
-router.patch('/:id/deactivate', authenticate, requireAdminOrManager, async (req, res) => {
+router.patch('/:id/deactivate', authenticate, requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
     return res.status(400).json({ error: 'Invalid rule set id' });
@@ -530,7 +530,7 @@ router.patch('/:id/deactivate', authenticate, requireAdminOrManager, async (req,
 });
 
 // ─── UPDATE rates for a rule set ─────────────────────────────────────────────
-router.put('/:id/rates', authenticate, requireAdminOrManager, async (req, res) => {
+router.put('/:id/rates', authenticate, requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
     return res.status(400).json({ error: 'Invalid rule set id' });
@@ -598,7 +598,7 @@ router.put('/:id/rates', authenticate, requireAdminOrManager, async (req, res) =
 });
 
 // ─── DELETE a rule set ────────────────────────────────────────────────────────
-router.delete('/:id', authenticate, requireAdminOrManager, async (req, res) => {
+router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
     return res.status(400).json({ error: 'Invalid rule set id' });
