@@ -1,7 +1,7 @@
 // routes/reports.js
 const express = require('express');
 const { pool } = require('../utils/db');
-const { authenticate, requireAdmin, requireAdminOrManager } = require('../middleware/auth');
+const { authenticate, requireAdmin, requireAdminOrManager, hasRole } = require('../middleware/auth');
 const { getRevenueByBranch } = require('../services/revenueByBranchService');
 
 const router = express.Router();
@@ -158,6 +158,9 @@ router.get('/revenue-by-branch', authenticate, async (req, res) => {
 // Query params: ?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
 router.get('/investor-revenue', authenticate, async (req, res) => {
   try {
+    if (hasRole(req.user, 'driver') && !hasRole(req.user, 'admin', 'camera_manager', 'investor')) {
+      return res.status(403).json({ error: 'Bạn không có quyền truy cập báo cáo nhà đầu tư.' });
+    }
     const { startDate, endDate } = req.query;
 
     let periodStartISO, periodEndISO, employeePeriodStartDate, employeePeriodEndDate;

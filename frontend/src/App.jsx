@@ -211,8 +211,9 @@ function AuthGate() {
             },
             {
               title: 'Nhà đầu tư',
+              visible: !isDriver,
               items: [
-                { to: '/investors', icon: <PieChart size={18} />, label: 'Báo Cáo Nhà Đầu Tư', visible: true },
+                { to: '/investors', icon: <PieChart size={18} />, label: 'Báo Cáo Nhà Đầu Tư', visible: !isDriver },
               ]
             },
           ].filter(g => g.visible !== false).map((group, gIdx) => {
@@ -304,7 +305,7 @@ function AuthGate() {
             <Route path="/commission-configs" element={isAdmin ? <CommissionConfigs key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/collaborators" element={isAdmin ? <CollaboratorHierarchy key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/performance" element={<Performance key={activeRole} />} />
-            <Route path="/investors" element={<Investors key={activeRole} />} />
+            <Route path="/investors" element={!isDriver ? <Investors key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/activity"  element={isAdmin ? <ActivityLog key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="*"          element={<Navigate to={(isAdmin || isCameraManager || isInvestor || isDriver) ? "/" : "/rentals"} replace />} />
           </Routes>
