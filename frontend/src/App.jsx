@@ -1,17 +1,22 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
-import { BarChart3, Package, Calendar, Users, LogOut, Menu, X, Activity, ShieldCheck, Store, TrendingUp, Wallet, ChevronDown, Percent, GitBranch } from 'lucide-react';
+import { BarChart3, Package, Calendar, Users, LogOut, Menu, X, Activity, ShieldCheck, Store, TrendingUp, Wallet, ChevronDown, Percent, GitBranch, PieChart, Send, Megaphone, Receipt, DollarSign, ArrowRightLeft } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Dashboard from './pages/Dashboard';
 import DashboardV1 from './pages/DashboardV1';
 import Equipment from './pages/Equipment';
+import EquipmentTransfers from './pages/EquipmentTransfers';
 import Rentals from './pages/Rentals';
 import Customers from './pages/Customers';
 import CalendarPage from './pages/Calendar';
 import ActivityLog from './pages/ActivityLog';
 import Branches from './pages/Branches';
 import Performance from './pages/Performance';
+import Investors from './pages/Investors';
 import UsersPage from './pages/Users';
+import SaleAdminTransfers from './pages/SaleAdminTransfers';
+import AdsCosts from './pages/AdsCosts';
+import MiscCosts from './pages/MiscCosts';
 import Payroll from './pages/Payroll';
 import SaleTransfer from './pages/SaleTransfer';
 import CommissionConfigs from './pages/CommissionConfigs';
@@ -160,32 +165,92 @@ function AuthGate() {
           </div>
         )}
 
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto custom-scrollbar-dark">
-          {(isAdmin || isCameraManager || isInvestor || isDriver) && (
-            <NavLink to="/"          icon={<BarChart3 size={20} />} label="Dashboard"   open={sidebarOpen || mobileMenuOpen} />
-          )}
-          <NavLink to="/rentals" icon={<Calendar size={20} />} label="Đơn Thuê" open={sidebarOpen || mobileMenuOpen} />
-          <NavLink to="/calendar" icon={<Calendar size={20} />} label="Lịch Trình" open={sidebarOpen || mobileMenuOpen} />
-          <NavLink to="/equipment" icon={<Package size={20} />} label="Thiết Bị" open={sidebarOpen || mobileMenuOpen} />
-          <NavLink to="/customers" icon={<Users size={20} />} label="Khách Hàng" open={sidebarOpen || mobileMenuOpen} />
-          <NavLink to="/performance" icon={<TrendingUp  size={20} />} label="Hiệu Suất"   open={sidebarOpen || mobileMenuOpen} />
-          {isSaler && (
-            <NavLink to="/sale-transfers" icon={<Wallet size={20} />} label="Chuyển Tiền" open={sidebarOpen || mobileMenuOpen} />
-          )}
-          {(isAdmin || isCameraManager) && (
-            <>
-              <NavLink to="/commission-configs" icon={<Percent size={20} />} label="Cấu Hình Hoa Hồng" open={sidebarOpen || mobileMenuOpen} />
-              <NavLink to="/collaborators" icon={<GitBranch size={20} />} label="Tuyến Cộng Tác" open={sidebarOpen || mobileMenuOpen} />
-            </>
-          )}
-          {isAdmin && (
-            <>
-              <NavLink to="/payroll"     icon={<Wallet      size={20} />} label="Báo Cáo Chi Phí" open={sidebarOpen || mobileMenuOpen} />
-              <NavLink to="/branches" icon={<Store     size={20} />} label="Cơ Sở"       open={sidebarOpen || mobileMenuOpen} />
-              <NavLink to="/users"       icon={<Users       size={20} />} label="Tài Khoản"   open={sidebarOpen || mobileMenuOpen} />
-              <NavLink to="/activity" icon={<Activity  size={20} />} label="Nhật Ký"     open={sidebarOpen || mobileMenuOpen} />
-            </>
-          )}
+        <nav className="flex-1 p-3 space-y-3 overflow-y-auto custom-scrollbar-dark">
+          {[
+            {
+              title: 'Tổng quan',
+              items: [
+                { to: '/', icon: <BarChart3 size={18} />, label: 'Dashboard', visible: isAdmin || isCameraManager || isInvestor || isDriver },
+                { to: '/performance', icon: <TrendingUp size={18} />, label: 'Hiệu Suất', visible: true },
+              ]
+            },
+            {
+              title: 'Vận hành',
+              items: [
+                { to: '/rentals', icon: <Calendar size={18} />, label: 'Đơn Thuê', visible: true },
+                { to: '/calendar', icon: <Calendar size={18} />, label: 'Lịch Trình', visible: true },
+                { to: '/branches', icon: <Store size={18} />, label: 'Cơ Sở', visible: isAdmin },
+                { to: '/activity', icon: <Activity size={18} />, label: 'Nhật Ký', visible: isAdmin },
+              ]
+            },
+            {
+              title: 'Tài sản',
+              items: [
+                { to: '/equipment', icon: <Package size={18} />, label: 'Thiết Bị', visible: true },
+                { to: '/equipment-transfers', icon: <ArrowRightLeft size={18} />, label: 'Điều Chuyển', visible: isAdmin || isCameraManager },
+              ]
+            },
+            {
+              title: 'CRM & Nhân sự',
+              items: [
+                { to: '/customers', icon: <Users size={18} />, label: 'Khách Hàng', visible: true },
+                { to: '/collaborators', icon: <GitBranch size={18} />, label: 'Tuyến Cộng Tác', visible: isAdmin || isCameraManager },
+                { to: '/users', icon: <Users size={18} />, label: 'Tài Khoản', visible: isAdmin },
+              ]
+            },
+            {
+              title: 'Tài chính',
+              visible: !isSaler && !isDriver,
+              items: [
+                { to: '/payroll', icon: <Wallet size={18} />, label: 'Bảng Lương', visible: isAdmin },
+                { to: '/sale-admin-transfers', icon: <Send size={18} />, label: 'Sổ Chuyển Tiền', visible: isAdmin },
+                { to: '/ads-costs', icon: <Megaphone size={18} />, label: 'Chi phí Quảng cáo', visible: isAdmin },
+                { to: '/misc-costs', icon: <Receipt size={18} />, label: 'Chi phí Phát sinh', visible: isAdmin },
+                { to: '/commission-configs', icon: <DollarSign size={18} />, label: 'Cấu Hình Hoa Hồng', visible: isAdmin || isCameraManager },
+              ]
+            },
+            {
+              title: 'Nhà đầu tư',
+              items: [
+                { to: '/investors', icon: <PieChart size={18} />, label: 'Báo Cáo Nhà Đầu Tư', visible: true },
+              ]
+            },
+          ].filter(g => g.visible !== false).map((group, gIdx) => {
+            const visibleItems = group.items.filter(item => item.visible);
+            const isOpen = sidebarOpen || mobileMenuOpen;
+
+            return (
+              <div key={group.title} className={gIdx > 0 ? 'pt-1 border-t border-gray-700/50' : ''}>
+                {isOpen ? (
+                  <div className="px-3 pt-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400/90 select-none">
+                    {group.title}
+                  </div>
+                ) : (
+                  <div className="py-1" title={group.title} />
+                )}
+
+                <div className="space-y-1">
+                  {visibleItems.length > 0 ? (
+                    visibleItems.map(item => (
+                      <NavLink
+                        key={item.to}
+                        to={item.to}
+                        icon={item.icon}
+                        label={item.label}
+                        open={isOpen}
+                      />
+                    ))
+                  ) : (
+                    isOpen && (
+                      <div className="px-3 py-1.5 text-xs text-gray-500 italic">
+                        Đang cập nhật...
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </nav>
 
         <div className="p-4 border-t border-gray-700">
@@ -225,16 +290,21 @@ function AuthGate() {
           <Routes>
             <Route path="/"          element={(isAdmin || isCameraManager || isInvestor || isDriver) ? <DashboardV1 key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/equipment" element={<Equipment key={activeRole} />} />
+            <Route path="/equipment-transfers" element={<EquipmentTransfers key={activeRole} />} />
             <Route path="/rentals"   element={<Rentals key={activeRole} />} />
             <Route path="/calendar"  element={<CalendarPage key={activeRole} />} />
             <Route path="/customers" element={<Customers key={activeRole} />} />
              <Route path="/branches"  element={isAdmin ? <Branches key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/users"     element={isAdmin ? <UsersPage key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/payroll"   element={isAdmin ? <Payroll key={activeRole} /> : <Navigate to="/rentals" replace />} />
+            <Route path="/sale-admin-transfers" element={isAdmin ? <SaleAdminTransfers key={activeRole} /> : <Navigate to="/rentals" replace />} />
+            <Route path="/ads-costs" element={isAdmin ? <AdsCosts key={activeRole} /> : <Navigate to="/rentals" replace />} />
+            <Route path="/misc-costs" element={isAdmin ? <MiscCosts key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/sale-transfers" element={isSaler ? <SaleTransfer key={activeRole} /> : <Navigate to="/" replace />} />
             <Route path="/commission-configs" element={(isAdmin || isCameraManager) ? <CommissionConfigs key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/collaborators" element={(isAdmin || isCameraManager) ? <CollaboratorHierarchy key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/performance" element={<Performance key={activeRole} />} />
+            <Route path="/investors" element={<Investors key={activeRole} />} />
             <Route path="/activity"  element={isAdmin ? <ActivityLog key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="*"          element={<Navigate to={(isAdmin || isCameraManager || isInvestor || isDriver) ? "/" : "/rentals"} replace />} />
           </Routes>
@@ -248,22 +318,24 @@ function AuthGate() {
 /* ── NavLink ──────────────────────────────────────────────────────── */
 function NavLink({ to, icon, label, open }) {
   const location = useLocation();
-  const isActive = to === '/' ? location.pathname === '/' : location.pathname.startsWith(to);
+  const isActive = to === '/' ? location.pathname === '/' : (location.pathname === to || location.pathname.startsWith(to + '/'));
 
   return (
     <Link
       to={to}
-      className={`flex items-center rounded-lg ${
-        open ? 'gap-3 px-4 py-3' : 'justify-center p-3 mx-2'
+      className={`flex items-center rounded-lg text-sm transition-all duration-150 ${
+        open ? 'gap-2.5 px-3 py-2' : 'justify-center p-2.5 mx-1'
       } ${
-        isActive ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-gray-300 hover:text-white hover:bg-gray-700'
+        isActive
+          ? 'bg-primary text-white font-medium shadow-sm shadow-primary/30'
+          : 'text-gray-300 hover:text-white hover:bg-gray-700/60'
       }`}
       title={!open ? label : ''}
     >
       <div className="shrink-0 w-5 flex items-center justify-center">
         {icon}
       </div>
-      {open && <span className="whitespace-nowrap">{label}</span>}
+      {open && <span className="whitespace-nowrap truncate">{label}</span>}
     </Link>
   );
 }

@@ -177,7 +177,7 @@ router.post('/', authenticate, requireSaler, async (req, res) => {
     const transferDate = transfer_date
       ? (transfer_date.includes('+') || transfer_date.includes('Z') || transfer_date.endsWith('z')
           ? new Date(transfer_date).toISOString()
-          : new Date(transfer_date + ':00+07:00').toISOString())
+          : (transfer_date.includes('T') ? new Date(transfer_date + ':00+07:00').toISOString() : new Date(transfer_date + 'T00:00:00+07:00').toISOString()))
       : new Date().toISOString();
     console.log('[POST sale-transfers] transfer_date=', transfer_date, '→ transferDate=', transferDate);
 
@@ -307,7 +307,7 @@ router.put('/:id', authenticate, requireSaler, async (req, res) => {
     const transferDate = transfer_date
       ? (transfer_date.includes('+') || transfer_date.includes('Z') || transfer_date.endsWith('z')
           ? new Date(transfer_date).toISOString()
-          : new Date(transfer_date + ':00+07:00').toISOString())
+          : (transfer_date.includes('T') ? new Date(transfer_date + ':00+07:00').toISOString() : new Date(transfer_date + 'T00:00:00+07:00').toISOString()))
       : new Date().toISOString();
     console.log('[PUT sale-transfers] transfer_date=', transfer_date, '→ transferDate=', transferDate);
 

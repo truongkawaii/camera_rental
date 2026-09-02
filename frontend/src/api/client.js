@@ -278,4 +278,21 @@ export const getCommissionReconciliation = (startDate, endDate) => {
   return api.get(`/reports/commission-reconciliation${qs ? `?${qs}` : ''}`);
 };
 
+// Equipment Transfers
+export const getEquipmentTransfers = (params) => {
+  const query = new URLSearchParams();
+  if (params?.month) query.set('month', params.month);
+  if (params?.status) query.set('status', params.status);
+  if (params?.equipment_id) query.set('equipment_id', params.equipment_id);
+  const qs = query.toString();
+  return api.get(`/equipment-transfers${qs ? `?${qs}` : ''}`);
+};
+export const getEquipmentTransfer = (id) => api.get(`/equipment-transfers/${id}`);
+export const createEquipmentTransfer = (data) => api.post('/equipment-transfers', data);
+export const approveTransfer = (id) => api.put(`/equipment-transfers/${id}/approve`);
+export const rejectTransfer = (id, reason) => api.put(`/equipment-transfers/${id}/reject`, { reason });
+export const completeTransfer = (id) => api.put(`/equipment-transfers/${id}/complete`);
+export const cancelTransfer = (id) => api.put(`/equipment-transfers/${id}/cancel`);
+export const deleteEquipmentTransfer = (id) => api.delete(`/equipment-transfers/${id}`);
+
 export default api;

@@ -130,7 +130,7 @@ router.get('/', authenticate, async (req, res) => {
       WITH equipment_stats AS (
         SELECT 
           e.id, e.name, e.category, e.brand, e.model, e.price_per_day, e.price_per_session, e.price_per_day_discount, e.discount_day_threshold, e.code,
-          e.condition, e.purchase_date, e.inserted_at, e.branch_id, e.owner_id,
+          e.condition, e.purchase_date, e.inserted_at, e.branch_id, e.owner_id, e.current_branch_id,
           b.name as branch_name,
           owner.full_name as owner_name,
           owner.username as owner_username,
@@ -278,6 +278,7 @@ router.get('/calendar', authenticate, async (req, res) => {
       `SELECT e.id, e.name, e.code, e.model, e.brand, e.condition,
               e.category,
               e.branch_id, b.name as branch_name,
+              e.current_branch_id, cb.name as current_branch_name,
               e.price_per_day, e.price_per_session,
               e.price_per_day_discount, e.discount_day_threshold,
               e.owner_id,
@@ -295,6 +296,7 @@ router.get('/calendar', authenticate, async (req, res) => {
               ) as images
        FROM equipment e
        LEFT JOIN branches b ON e.branch_id = b.id
+       LEFT JOIN branches cb ON e.current_branch_id = cb.id
        ${whereClause}
        ${orderClause}
        LIMIT $${limitIdx} OFFSET $${offsetIdx}`,

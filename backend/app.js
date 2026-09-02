@@ -28,6 +28,7 @@ const blacklistRouter = require('./routes/blacklist');
 const commissionConfigsRouter = require('./routes/commissionConfigs');
 const collaboratorsRouter = require('./routes/collaborators');
 const saleTransfersRouter = require('./routes/saleTransfers');
+const equipmentTransfersRouter = require('./routes/equipmentTransfers');
 
 
 const app = express();
@@ -105,6 +106,7 @@ app.use('/api/blacklist', blacklistRouter);
 app.use('/api/commission-configs', commissionConfigsRouter);
 app.use('/api/collaborators', collaboratorsRouter);
 app.use('/api/sale-transfers', saleTransfersRouter);
+app.use('/api/equipment-transfers', equipmentTransfersRouter);
 
 
 // Root API endpoint

@@ -40,7 +40,9 @@ router.get('/rentals', authenticate, async (req, res) => {
         r.pickup_time, r.return_time, r.code, r.order_number,
         c.name as customer_name, c.phone as customer_phone,
         e.name as equipment_name, e.code as equipment_code, e.category,
+        e.current_branch_id,
         b.name as original_branch_name,
+        cb.name as current_branch_name,
         pb.name as pickup_branch_name,
         rb.name as return_branch_name,
         COALESCE(u.full_name, u.username) as creator_name,
@@ -51,6 +53,7 @@ router.get('/rentals', authenticate, async (req, res) => {
       LEFT JOIN users u ON r.user_id = u.id
       LEFT JOIN users m ON r.manager_id = m.id
       LEFT JOIN branches b ON r.branch_id = b.id
+      LEFT JOIN branches cb ON e.current_branch_id = cb.id
       LEFT JOIN branches pb ON r.pickup_branch_id = pb.id
       LEFT JOIN branches rb ON r.return_branch_id = rb.id
       WHERE r.is_deleted = false AND r.status != 'cancelled'

@@ -230,8 +230,15 @@ const CalendarRow = React.memo(({
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1 text-[10px] md:text-xs font-semibold text-slate-500 mt-0.5 md:mt-1 truncate" title={eq.branch_name || 'Hệ thống'}>
-          <Home size={10} className="text-slate-400 shrink-0" /><span>{eq.branch_name || 'Hệ thống'}</span>
+        <div className="flex flex-col gap-0.5 mt-0.5 md:mt-1">
+          <div className="flex items-center gap-1 text-[10px] md:text-xs font-semibold text-slate-500 truncate" title={eq.branch_name || 'Hệ thống'}>
+            <Home size={10} className="text-slate-400 shrink-0" /><span>{eq.branch_name || 'Hệ thống'}</span>
+          </div>
+          {eq.current_branch_id && eq.current_branch_id !== eq.branch_id && (
+            <div className="flex items-center gap-1 text-[10px] md:text-xs font-semibold text-indigo-600 truncate" title={`Đang ở: ${eq.current_branch_name}`}>
+              <Home size={10} className="text-indigo-400 shrink-0" /><span>Đang ở: {eq.current_branch_name}</span>
+            </div>
+          )}
         </div>
       </div>
 

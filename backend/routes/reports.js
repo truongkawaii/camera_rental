@@ -156,7 +156,7 @@ router.get('/revenue-by-branch', authenticate, async (req, res) => {
 
 // Investor revenue report (separate from revenue-by-branch for performance)
 // Query params: ?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
-router.get('/investor-revenue', authenticate, requireAdminOrManager, async (req, res) => {
+router.get('/investor-revenue', authenticate, async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
 

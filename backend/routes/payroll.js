@@ -551,7 +551,7 @@ router.post('/transfers', authenticate, requireAdmin, async (req, res) => {
     const transferDate = transfer_date
       ? (transfer_date.includes('+') || transfer_date.includes('Z') || transfer_date.endsWith('z')
           ? new Date(transfer_date).toISOString()
-          : new Date(transfer_date + ':00+07:00').toISOString())
+          : (transfer_date.includes('T') ? new Date(transfer_date + ':00+07:00').toISOString() : new Date(transfer_date + 'T00:00:00+07:00').toISOString()))
       : new Date().toISOString();
 
     const insertResult = await pool.query(
@@ -604,7 +604,7 @@ router.put('/transfers/:id', authenticate, requireAdmin, async (req, res) => {
     const transferDate = transfer_date
       ? (transfer_date.includes('+') || transfer_date.includes('Z') || transfer_date.endsWith('z')
           ? new Date(transfer_date).toISOString()
-          : new Date(transfer_date + ':00+07:00').toISOString())
+          : (transfer_date.includes('T') ? new Date(transfer_date + ':00+07:00').toISOString() : new Date(transfer_date + 'T00:00:00+07:00').toISOString()))
       : new Date().toISOString();
 
     const updateResult = await pool.query(

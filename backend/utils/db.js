@@ -521,12 +521,34 @@ const initDB = async () => {
     await pool.query(`UPDATE misc_costs SET start_date = date WHERE start_date IS NULL`);
     await pool.query(`UPDATE misc_costs SET end_date = date WHERE end_date IS NULL`);
 
+    // Equipment transfers table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS equipment_transfers (
+        id SERIAL PRIMARY KEY,
+        equipment_id INTEGER NOT NULL REFERENCES equipment(id),
+        from_branch_id INTEGER NOT NULL REFERENCES branches(id),
+        to_branch_id INTEGER NOT NULL REFERENCES branches(id),
+        status VARCHAR(20) DEFAULT 'pending',
+        reason TEXT,
+        requested_by INTEGER REFERENCES users(id),
+        approved_by INTEGER REFERENCES users(id),
+        approved_at TIMESTAMPTZ,
+        completed_at TIMESTAMPTZ,
+        notes TEXT,
+        ${AUDIT_COLUMNS}
+      )
+    `);
+
+    // Add current_branch_id to equipment (NULL = at home branch)
+    await pool.query(`ALTER TABLE equipment ADD COLUMN IF NOT EXISTS current_branch_id INTEGER REFERENCES branches(id)`);
+
     // Dynamic Migration for existing tables to ensure they have audit columns
     const tables = [
       'branches', 'roles', 'users', 'user_roles', 'user_branches', 'customers', 'equipment_categories',
       'equipment', 'rentals', 'rental_accessories', 'equipment_maintenance',
       'tasks', 'financial_transactions', 'sales_transfer_logs', 'payroll_snapshots', 'activity_logs', 'ads_costs', 'misc_costs', 'entity_images',
-      'commission_rule_sets', 'commission_rule_set_users', 'collaborator_hierarchy', 'rental_commission_ledger'
+      'commission_rule_sets', 'commission_rule_set_users', 'collaborator_hierarchy', 'rental_commission_ledger',
+      'equipment_transfers'
     ];
 
     for (const table of tables) {
