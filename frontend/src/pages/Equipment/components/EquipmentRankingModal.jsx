@@ -81,14 +81,42 @@ const EquipmentRankingModal = ({ data = [], loading, month, onClose }) => {
     };
   }, []);
 
-  const pieData = useMemo(() => data.map((item) => ({
+  const displayData = useMemo(() => {
+    if (!Array.isArray(data)) return [];
+    const map = new Map();
+    data.forEach((item) => {
+      const modelName = (item.model || 'Không xác định').trim();
+      const key = modelName.toLowerCase();
+      if (!map.has(key)) {
+        map.set(key, { ...item, model: modelName });
+      } else {
+        const existing = map.get(key);
+        existing.rental_count = (parseInt(existing.rental_count) || 0) + (parseInt(item.rental_count) || 0);
+        existing.total_revenue = (parseFloat(existing.total_revenue) || 0) + (parseFloat(item.total_revenue) || 0);
+        existing.equipment_count = (parseInt(existing.equipment_count) || 0) + (parseInt(item.equipment_count) || 0);
+      }
+    });
+
+    const list = Array.from(map.values()).sort((a, b) => 
+      ((parseInt(b.rental_count) || 0) - (parseInt(a.rental_count) || 0)) || 
+      ((parseFloat(b.total_revenue) || 0) - (parseFloat(a.total_revenue) || 0))
+    );
+
+    const grandTotal = list.reduce((s, i) => s + (parseInt(i.rental_count) || 0), 0);
+    return list.map(i => ({
+      ...i,
+      percentage: grandTotal > 0 ? ((parseInt(i.rental_count) || 0) / grandTotal) * 100 : 0
+    }));
+  }, [data]);
+
+  const pieData = useMemo(() => displayData.map((item) => ({
     id: item.model,
-    name: item.model || 'Không xác định',
+    name: item.model,
     value: parseInt(item.rental_count) || 0,
     rental_count: parseInt(item.rental_count) || 0,
     total_revenue: parseFloat(item.total_revenue) || 0,
     percentage: parseFloat(item.percentage) || 0,
-  })), [data]);
+  })), [displayData]);
 
   const formatMonthLabel = (m) => {
     if (!m || !/^\d{4}-\d{2}$/.test(m)) return '';
@@ -128,7 +156,7 @@ const EquipmentRankingModal = ({ data = [], loading, month, onClose }) => {
               <Loader2 size={36} className="animate-spin text-orange-500" />
               <span className="text-sm font-semibold text-slate-400 uppercase tracking-widest">Đang tải dữ liệu...</span>
             </div>
-          ) : data.length === 0 ? (
+          ) : displayData.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
               <div className="w-16 h-16 rounded-full bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-300">
                 <BarChart3 size={32} />
@@ -142,7 +170,7 @@ const EquipmentRankingModal = ({ data = [], loading, month, onClose }) => {
               <div className="lg:w-[65%] min-w-0">
                 {/* ── Mobile: Card layout ── */}
                 <div className="sm:hidden space-y-2">
-                  {data.map((item, index) => {
+                  {displayData.map((item, index) => {
                     const rank = index + 1;
                     const pieColor = PIE_COLORS[index % PIE_COLORS.length];
                     return (
@@ -218,7 +246,7 @@ const EquipmentRankingModal = ({ data = [], loading, month, onClose }) => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {data.map((item, index) => {
+                      {displayData.map((item, index) => {
                         const rank = index + 1;
                         const pieColor = PIE_COLORS[index % PIE_COLORS.length];
                         return (
@@ -292,7 +320,7 @@ const EquipmentRankingModal = ({ data = [], loading, month, onClose }) => {
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0">
                         <div className="text-center">
                           <p className="text-2xl font-extrabold text-slate-800">
-                            {data.length}
+                            {displayData.length}
                           </p>
                           <p className="text-[11px] font-semibold text-slate-400 uppercase">
                             model
@@ -327,16 +355,16 @@ const EquipmentRankingModal = ({ data = [], loading, month, onClose }) => {
 
                     {/* Legend */}
                     {renderLegend(pieData.slice(0, 10), PIE_COLORS)}
-                    {data.length > 10 && (
+                    {displayData.length > 10 && (
                       <p className="text-[11px] text-slate-400 mt-1 text-center">
-                        +{data.length - 10} model khác
+                        +{displayData.length - 10} model khác
                       </p>
                     )}
 
                     {/* Summary stats */}
-                    {data.length > 0 && (() => {
-                      const totalRentals = data.reduce((sum, item) => sum + (parseInt(item.rental_count) || 0), 0);
-                      const totalRevenue = data.reduce((sum, item) => sum + (parseFloat(item.total_revenue) || 0), 0);
+                    {displayData.length > 0 && (() => {
+                      const totalRentals = displayData.reduce((sum, item) => sum + (parseInt(item.rental_count) || 0), 0);
+                      const totalRevenue = displayData.reduce((sum, item) => sum + (parseFloat(item.total_revenue) || 0), 0);
                       return (
                         <div className="mt-4 pt-4 border-t border-slate-200 space-y-2">
                           <div className="flex items-center justify-between">

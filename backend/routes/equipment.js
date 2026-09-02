@@ -589,7 +589,7 @@ router.get('/models', authenticate, async (req, res) => {
     const isAdmin = hasRole(req.user, 'admin');
     const investorOnly = isInvestorOnly(req.user);
     const branchIds = req.user.branch_ids || [];
-    let conditions = 'e.is_deleted = false AND e.model IS NOT NULL AND e.model != \'\'';
+    let conditions = 'e.is_deleted = false';
     const params = [];
 
     if (investorOnly) {
@@ -601,10 +601,13 @@ router.get('/models', authenticate, async (req, res) => {
     }
 
     const result = await pool.query(
-      `SELECT DISTINCT e.model FROM equipment e WHERE ${conditions} ORDER BY e.model ASC`,
+      `SELECT DISTINCT TRIM(COALESCE(NULLIF(TRIM(e.model), ''), TRIM(e.name))) AS model
+       FROM equipment e
+       WHERE ${conditions}
+       ORDER BY model ASC`,
       params
     );
-    res.json({ data: result.rows.map(r => r.model) });
+    res.json({ data: result.rows.map(r => r.model).filter(Boolean) });
   } catch (error) {
     console.error('Fetch models error:', error);
     res.status(500).json({ error: 'Failed to fetch models' });
@@ -645,9 +648,6 @@ router.get('/ranking', authenticate, async (req, res) => {
 
   try {
     let params = [];
-    const investorOnly = isInvestorOnly(req.user);
-    const isAdmin = hasRole(req.user, 'admin');
-    const branchIds = req.user.branch_ids || [];
 
     // Month filter
     let monthFilter = '';
@@ -656,46 +656,39 @@ router.get('/ranking', authenticate, async (req, res) => {
       monthFilter = ` AND to_char(r.start_date, 'YYYY-MM') = $${params.length}`;
     }
 
-    // Build WHERE for equipment visibility
-    let equipWhere = 'e.is_deleted = false';
-    if (investorOnly) {
-      params.push(req.user.id);
-      equipWhere += ` AND e.owner_id = $${params.length}`;
-    } else if (!isAdmin) {
-      params.push(branchIds.length > 0 ? branchIds : [-1]);
-      equipWhere += ` AND e.branch_id = ANY($${params.length})`;
-    }
-
     // Exclude cancelled rentals
     const rentalStatusFilter = "r.is_deleted = false AND r.status != 'cancelled'";
-
-    // Build equipment visibility without table alias for standalone queries
-    const equipCountCondition = equipWhere.replace(/e\./g, '');
 
     const query = `
       WITH model_ranking AS (
         SELECT
-          e.model,
-          MAX(e.brand) AS brand,
+          LOWER(TRIM(COALESCE(NULLIF(TRIM(e.model), ''), TRIM(e.name)))) AS model_key,
+          MAX(TRIM(COALESCE(NULLIF(TRIM(e.model), ''), TRIM(e.name)))) AS model,
+          MAX(NULLIF(TRIM(e.brand), '')) AS brand,
           COUNT(*)::integer AS rental_count,
           COALESCE(SUM(r.total_price), 0)::numeric AS total_revenue
         FROM rentals r
-        JOIN equipment e ON r.equipment_id = e.id AND ${equipWhere}
+        JOIN equipment e ON r.equipment_id = e.id AND e.is_deleted = false
         WHERE ${rentalStatusFilter}
           ${monthFilter}
-        GROUP BY e.model
+        GROUP BY LOWER(TRIM(COALESCE(NULLIF(TRIM(e.model), ''), TRIM(e.name))))
       ),
       equipment_counts AS (
-        SELECT model, COUNT(*)::integer AS equipment_count
+        SELECT
+          LOWER(TRIM(COALESCE(NULLIF(TRIM(model), ''), TRIM(name)))) AS model_key,
+          COUNT(*)::integer AS equipment_count
         FROM equipment
-        WHERE ${equipCountCondition}
-        GROUP BY model
+        WHERE is_deleted = false
+        GROUP BY LOWER(TRIM(COALESCE(NULLIF(TRIM(model), ''), TRIM(name))))
       ),
       total_rentals AS (
         SELECT SUM(rental_count)::numeric AS grand_total FROM model_ranking
       )
       SELECT
-        mr.*,
+        mr.model,
+        mr.brand,
+        mr.rental_count,
+        mr.total_revenue,
         COALESCE(ec.equipment_count, 0) AS equipment_count,
         CASE
           WHEN tr.grand_total > 0
@@ -703,7 +696,7 @@ router.get('/ranking', authenticate, async (req, res) => {
           ELSE 0
         END AS percentage
       FROM model_ranking mr
-      LEFT JOIN equipment_counts ec ON ec.model = mr.model, total_rentals tr
+      LEFT JOIN equipment_counts ec ON ec.model_key = mr.model_key, total_rentals tr
       WHERE mr.rental_count > 0
       ORDER BY mr.rental_count DESC, mr.total_revenue DESC
     `;

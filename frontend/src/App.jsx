@@ -194,8 +194,15 @@ function AuthGate() {
               title: 'CRM & Nhân sự',
               items: [
                 { to: '/customers', icon: <Users size={18} />, label: 'Khách Hàng', visible: true },
-                { to: '/collaborators', icon: <GitBranch size={18} />, label: 'Tuyến Cộng Tác', visible: isAdmin },
                 { to: '/users', icon: <Users size={18} />, label: 'Tài Khoản', visible: isAdmin },
+              ]
+            },
+            {
+              title: 'Chính sách & Hoa hồng',
+              visible: isAdmin,
+              items: [
+                { to: '/collaborators', icon: <GitBranch size={18} />, label: 'Tuyến Cộng Tác', visible: isAdmin },
+                { to: '/commission-configs', icon: <DollarSign size={18} />, label: 'Cấu Hình Hoa Hồng', visible: isAdmin },
               ]
             },
             {
@@ -206,7 +213,6 @@ function AuthGate() {
                 { to: '/sale-admin-transfers', icon: <Send size={18} />, label: 'Sổ Chuyển Tiền', visible: isAdmin },
                 { to: '/ads-costs', icon: <Megaphone size={18} />, label: 'Chi phí Quảng cáo', visible: isAdmin },
                 { to: '/misc-costs', icon: <Receipt size={18} />, label: 'Chi phí Phát sinh', visible: isAdmin },
-                { to: '/commission-configs', icon: <DollarSign size={18} />, label: 'Cấu Hình Hoa Hồng', visible: isAdmin },
               ]
             },
             {
