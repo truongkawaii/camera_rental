@@ -1,0 +1,74 @@
+# =============================================================================
+# CI/CD Pipeline — Camera Rental (Self-hosted Runner)
+# 
+# Kiến trúc:
+#   Push to main → GitHub gửi job → Self-hosted Runner trên Ubuntu → docker compose rebuild
+#
+# YÊU CẦU: Cài GitHub Actions Runner trên Ubuntu server trước khi dùng workflow này.
+#   Vào repo → Settings → Actions → Runners → New self-hosted runner để lấy lệnh cài.
+#
+# KHÔNG cần GitHub Secrets vì runner chạy trực tiếp trên server.
+# =============================================================================
+
+name: Deploy to Ubuntu Server
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:  # Cho phép chạy thủ công từ GitHub UI
+
+jobs:
+  deploy:
+    name: Deploy to Server
+    runs-on: self-hosted
+
+    steps:
+      - name: Pull latest code
+        run: |
+          REPO_DIR="/home/locdo/camera-rental-prod"
+          REPO_URL="https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          
+          if [ -d "$REPO_DIR/.git" ]; then
+            echo "Repository exists, pulling latest..."
+            cd "$REPO_DIR"
+            git remote set-url origin "$REPO_URL"
+            git fetch origin
+            git reset --hard origin/main || git reset --hard origin/master
+          else
+            echo "Cloning repository..."
+            rm -rf "$REPO_DIR"
+            git clone --depth 1 "$REPO_URL" "$REPO_DIR"
+          fi
+
+      - name: Setup .env
+        run: |
+          cd /home/locdo/camera-rental-prod
+          if [ ! -f deploy/.env ]; then
+            if [ -f .env.example ]; then
+              cp .env.example deploy/.env
+              echo "WARNING: Created deploy/.env from .env.example. Edit it with real values!"
+            else
+              echo "WARNING: No .env found. Create deploy/.env manually."
+            fi
+          fi
+
+      - name: Deploy with Docker Compose
+        run: |
+          cd /home/locdo/camera-rental-prod/deploy
+          docker compose up -d --build --remove-orphans
+
+      - name: Reload nginx
+        run: |
+          cd /home/locdo/camera-rental-prod/deploy
+          docker compose restart nginx
+
+      - name: Cleanup old images
+        run: |
+          docker image prune -af --filter "until=72h" || true
+
+      - name: Show status
+        run: |
+          cd /home/locdo/camera-rental-prod/deploy
+          docker compose ps

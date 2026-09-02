@@ -1,0 +1,46 @@
+services:
+  # Backend API
+  - type: web
+    name: camera-rental-api
+    plan: free
+    runtime: docker
+    rootDir: backend
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: CLOUDINARY_UPLOAD_FOLDER
+        sync: false
+
+  # Frontend App
+  - type: web
+    name: camera-rental-app
+    plan: free
+    runtime: docker
+    rootDir: frontend
+    envVars:
+      - key: RENDER
+        value: "true"
+      - key: VITE_API_URL
+        sync: false # You will paste the Backend URL here after it deploys
+
+  # User Frontend App
+  - type: web
+    name: camera-rental-user-frontend
+    plan: free
+    runtime: docker
+    rootDir: user-fontend
+    envVars:
+      - key: API_URL
+        sync: false
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_TELEMETRY_DISABLED
+        value: '1'

@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Brand colors: vibrant orange and sleek dark gray/slate -->
+    <linearGradient id="apertureGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFA834" />
+      <stop offset="60%" stop-color="#FF8C00" />
+      <stop offset="100%" stop-color="#D95F00" />
+    </linearGradient>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2D3748" />
+      <stop offset="100%" stop-color="#111827" />
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.4" />
+    </filter>
+    <clipPath id="shutterClip">
+      <circle cx="256" cy="256" r="185" />
+    </clipPath>
+    <!-- Individual aperture blade -->
+    <path id="blade" d="M 314 256 L 500 220 L 460 440 L 285 306 Z" fill="url(#apertureGrad)" />
+  </defs>
+
+  <!-- Outer background circle with subtle glow/shadow -->
+  <circle cx="256" cy="256" r="230" fill="url(#bgGrad)" stroke="url(#apertureGrad)" stroke-width="12" filter="url(#shadow)" />
+
+  <!-- Shutter blades with 6-blade design -->
+  <g clip-path="url(#shutterClip)">
+    <use href="#blade" transform="rotate(0 256 256)" />
+    <use href="#blade" transform="rotate(60 256 256)" />
+    <use href="#blade" transform="rotate(120 256 256)" />
+    <use href="#blade" transform="rotate(180 256 256)" />
+    <use href="#blade" transform="rotate(240 256 256)" />
+    <use href="#blade" transform="rotate(300 256 256)" />
+  </g>
+
+  <!-- Inner accent circular ring for a camera lens look -->
+  <circle cx="256" cy="256" r="185" fill="none" stroke="#111827" stroke-width="8" opacity="0.6" />
+  
+  <!-- Sleek outer glass reflection effect (semi-transparent white curve) -->
+  <path d="M 120 80 A 210 210 0 0 1 392 80 A 210 190 0 0 0 120 80 Z" fill="#FFFFFF" opacity="0.05" />
+</svg>
