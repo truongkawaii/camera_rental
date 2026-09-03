@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
-import { BarChart3, Package, Calendar, Users, LogOut, Menu, X, Activity, ShieldCheck, Store, TrendingUp, Wallet, ChevronDown, Percent, GitBranch, PieChart, Send, Megaphone, Receipt, DollarSign, ArrowRightLeft } from 'lucide-react';
+import { BarChart3, Package, Calendar, Users, LogOut, Menu, X, Activity, ShieldCheck, Store, TrendingUp, Wallet, ChevronDown, Percent, GitBranch, PieChart, Send, Megaphone, Receipt, DollarSign, ArrowRightLeft, FileText } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Dashboard from './pages/Dashboard';
 import DashboardV1 from './pages/DashboardV1';
@@ -245,6 +245,7 @@ function AuthGate() {
                         icon={item.icon}
                         label={item.label}
                         open={isOpen}
+                        onClick={() => setMobileMenuOpen(false)}
                       />
                     ))
                   ) : (
@@ -293,7 +294,7 @@ function AuthGate() {
         </header>
 
         <div id="main-scroll-area" className="flex-1 overflow-y-auto overflow-x-hidden overscroll-y-auto min-h-0 flex flex-col">
-          <main className="flex-1 min-h-0 min-w-0 overflow-x-hidden">
+          <main className="flex-1 min-h-0 min-w-0 overflow-x-hidden pb-20 xl:pb-0">
           <Routes>
             <Route path="/"          element={(isAdmin || isCameraManager || isInvestor || isDriver) ? <DashboardV1 key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/equipment" element={<Equipment key={activeRole} />} />
@@ -317,19 +318,27 @@ function AuthGate() {
           </Routes>
         </main>
         </div>
+
+        {/* ── Mobile Bottom Navigation Bar ─────────────────────────────── */}
+        <MobileBottomNav
+          onOpenMenu={() => setMobileMenuOpen(prev => !prev)}
+          onCloseMenu={() => setMobileMenuOpen(false)}
+          isMenuOpen={mobileMenuOpen}
+        />
       </div>
     </div>
   );
 }
 
 /* ── NavLink ──────────────────────────────────────────────────────── */
-function NavLink({ to, icon, label, open }) {
+function NavLink({ to, icon, label, open, onClick }) {
   const location = useLocation();
   const isActive = to === '/' ? location.pathname === '/' : (location.pathname === to || location.pathname.startsWith(to + '/'));
 
   return (
     <Link
       to={to}
+      onClick={onClick}
       className={`flex items-center rounded-lg text-sm transition-all duration-150 ${
         open ? 'gap-2.5 px-3 py-2' : 'justify-center p-2.5 mx-1'
       } ${
@@ -344,6 +353,92 @@ function NavLink({ to, icon, label, open }) {
       </div>
       {open && <span className="whitespace-nowrap truncate">{label}</span>}
     </Link>
+  );
+}
+
+/* ── Mobile Bottom Navigation ────────────────────────────────────── */
+function MobileBottomNav({ onOpenMenu, onCloseMenu, isMenuOpen }) {
+  const location = useLocation();
+
+  const navItems = [
+    {
+      to: '/',
+      label: 'Tổng quan',
+      icon: BarChart3,
+      isActive: location.pathname === '/' && !isMenuOpen,
+    },
+    {
+      to: '/rentals',
+      label: 'Đơn thuê',
+      icon: FileText,
+      isActive: (location.pathname === '/rentals' || location.pathname.startsWith('/rentals/')) && !isMenuOpen,
+    },
+    {
+      to: '/calendar',
+      label: 'Lịch thuê',
+      icon: Calendar,
+      isActive: (location.pathname === '/calendar' || location.pathname.startsWith('/calendar/')) && !isMenuOpen,
+    },
+    {
+      isAction: true,
+      onClick: onOpenMenu,
+      label: 'Thêm',
+      icon: Menu,
+      isActive: isMenuOpen,
+    },
+  ];
+
+  return (
+    <nav aria-label="Mobile navigation" className="fixed bottom-0 inset-x-0 z-40 xl:hidden bg-white/95 backdrop-blur-xl border-t border-slate-200/90 shadow-[0_-8px_25px_rgba(0,0,0,0.06)] select-none pb-[max(env(safe-area-inset-bottom),0.35rem)]">
+      <div className="grid grid-cols-4 h-16 items-center px-2">
+        {navItems.map((item, idx) => {
+          const Icon = item.icon;
+          const activeClass = item.isActive
+            ? 'text-orange-600 font-bold'
+            : 'text-slate-400 hover:text-slate-600 font-medium';
+
+          const content = (
+            <div className={`flex flex-col items-center justify-center w-full py-1 relative transition-all duration-200 ${activeClass}`}>
+              {/* Active top indicator pill */}
+              {item.isActive && (
+                <span className="absolute -top-2 w-8 h-1 bg-gradient-to-r from-orange-500 to-rose-500 rounded-full shadow-sm shadow-orange-500/30" />
+              )}
+              {/* Icon container with soft active background */}
+              <div className={`w-10 h-8 rounded-xl flex items-center justify-center transition-all duration-200 ${item.isActive ? 'bg-orange-50 scale-110 shadow-sm shadow-orange-500/10' : 'active:scale-95'}`}>
+                <Icon size={20} strokeWidth={item.isActive ? 2.3 : 1.8} />
+              </div>
+              <span className="text-[11px] tracking-tight mt-0.5 leading-tight">
+                {item.label}
+              </span>
+            </div>
+          );
+
+          if (item.isAction) {
+            return (
+              <button
+                key={idx}
+                type="button"
+                onClick={item.onClick}
+                className="flex items-center justify-center w-full h-full focus:outline-none"
+              >
+                {content}
+              </button>
+            );
+          }
+
+          return (
+            <Link
+              key={idx}
+              to={item.to}
+              onClick={onCloseMenu}
+              className="flex items-center justify-center w-full h-full focus:outline-none"
+            >
+              {content}
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
   );
 }
 
