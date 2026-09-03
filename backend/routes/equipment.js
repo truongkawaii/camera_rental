@@ -67,8 +67,8 @@ router.get('/', authenticate, async (req, res) => {
 
     // Optional model filter
     if (model) {
-      params.push(model);
-      baseWhere += ` AND e.model = $${params.length}`;
+      params.push(model.trim());
+      baseWhere += ` AND LOWER(TRIM(COALESCE(NULLIF(TRIM(e.model), ''), TRIM(e.name)))) = LOWER($${params.length})`;
     }
 
     // Optional brand filter
@@ -249,10 +249,10 @@ router.get('/calendar', authenticate, async (req, res) => {
 
     // model filter (comma-separated, skip if ALL)
     if (model && model !== 'ALL') {
-      const models = model.split(',').map(m => m.trim()).filter(Boolean);
+      const models = model.split(',').map(m => m.trim().toLowerCase()).filter(Boolean);
       if (models.length > 0) {
         params.push(models);
-        whereClause += ` AND e.model = ANY($${params.length})`;
+        whereClause += ` AND LOWER(TRIM(COALESCE(NULLIF(TRIM(e.model), ''), TRIM(e.name)))) = ANY($${params.length})`;
       }
     }
 
