@@ -638,15 +638,16 @@ const Equipment = () => {
           canManage={canManage}
           currentPage={currentPage}
           totalPages={totalPages}
-          onPageChange={handlePageChange}
+          onPageChange={setCurrentPage}
           onEdit={openEditModal}
-          onDelete={openDeleteModal}
+          onDelete={setDeleteTarget}
           onDuplicate={openDuplicateModal}
           month={month}
           sortBy={sortBy}
           sortOrder={sortOrder}
           statsVisibility={equipmentStatsVisibility}
           onSort={(col) => {
+            setCurrentPage(1);
             if (sortBy === col) {
               setSortOrder(sortOrder === 'ASC' ? 'DESC' : 'ASC');
             } else {
