@@ -14,7 +14,6 @@ import Branches from './pages/Branches';
 import Performance from './pages/Performance';
 import Investors from './pages/Investors';
 import UsersPage from './pages/Users';
-import SaleAdminTransfers from './pages/SaleAdminTransfers';
 import AdsCosts from './pages/AdsCosts';
 import MiscCosts from './pages/MiscCosts';
 import Payroll from './pages/Payroll';
@@ -211,7 +210,6 @@ function AuthGate() {
               visible: isAdmin,
               items: [
                 { to: '/payroll', icon: <Wallet size={18} />, label: 'Bảng Lương', visible: isAdmin },
-                { to: '/sale-admin-transfers', icon: <Send size={18} />, label: 'Sổ Chuyển Tiền', visible: isAdmin },
                 { to: '/ads-costs', icon: <Megaphone size={18} />, label: 'Chi phí Quảng cáo', visible: isAdmin },
                 { to: '/misc-costs', icon: <Receipt size={18} />, label: 'Chi phí Phát sinh', visible: isAdmin },
               ]
@@ -306,7 +304,6 @@ function AuthGate() {
              <Route path="/branches"  element={isAdmin ? <Branches key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/users"     element={isAdmin ? <UsersPage key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/payroll"   element={isAdmin ? <Payroll key={activeRole} /> : <Navigate to="/rentals" replace />} />
-            <Route path="/sale-admin-transfers" element={isAdmin ? <SaleAdminTransfers key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/ads-costs" element={isAdmin ? <AdsCosts key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/misc-costs" element={isAdmin ? <MiscCosts key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/sale-transfers" element={isSaler ? <SaleTransfer key={activeRole} /> : <Navigate to="/" replace />} />
