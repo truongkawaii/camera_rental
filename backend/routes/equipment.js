@@ -42,13 +42,15 @@ router.get('/', authenticate, async (req, res) => {
 
     // Base WHERE for equipment (is_deleted and availability)
     const isAdmin = hasRole(req.user, 'admin');
+    const isSaler = hasRole(req.user, 'saler');
+    const isDriver = hasRole(req.user, 'driver');
     const investorOnly = isInvestorOnly(req.user);
     const branchIds = req.user.branch_ids || [];
     let baseWhere = 'WHERE e.is_deleted = false';
     if (investorOnly) {
       params.push(req.user.id);
       baseWhere += ` AND e.owner_id = $${params.length}`;
-    } else if (!isAdmin) {
+    } else if (!isAdmin && !isSaler && !isDriver) {
       params.push(branchIds.length > 0 ? branchIds : [-1]);
       baseWhere += ` AND e.branch_id = ANY($${params.length})`;
     }
@@ -225,6 +227,8 @@ router.get('/calendar', authenticate, async (req, res) => {
   try {
     const params = [];
     const isAdmin = hasRole(req.user, 'admin');
+    const isSaler = hasRole(req.user, 'saler');
+    const isDriver = hasRole(req.user, 'driver');
     const investorOnly = isInvestorOnly(req.user);
     const branchIds = req.user.branch_ids || [];
 
@@ -233,7 +237,7 @@ router.get('/calendar', authenticate, async (req, res) => {
     if (investorOnly) {
       params.push(req.user.id);
       whereClause += ` AND e.owner_id = $${params.length}`;
-    } else if (!isAdmin) {
+    } else if (!isAdmin && !isSaler && !isDriver) {
       params.push(branchIds.length > 0 ? branchIds : [-1]);
       whereClause += ` AND e.branch_id = ANY($${params.length})`;
     }
@@ -587,6 +591,8 @@ router.post('/:id/upload-image', authenticate, requireAdminOrManager, async (req
 router.get('/models', authenticate, async (req, res) => {
   try {
     const isAdmin = hasRole(req.user, 'admin');
+    const isSaler = hasRole(req.user, 'saler');
+    const isDriver = hasRole(req.user, 'driver');
     const investorOnly = isInvestorOnly(req.user);
     const branchIds = req.user.branch_ids || [];
     let conditions = 'e.is_deleted = false';
@@ -595,7 +601,7 @@ router.get('/models', authenticate, async (req, res) => {
     if (investorOnly) {
       params.push(req.user.id);
       conditions += ` AND e.owner_id = $${params.length}`;
-    } else if (!isAdmin) {
+    } else if (!isAdmin && !isSaler && !isDriver) {
       params.push(branchIds.length > 0 ? branchIds : [-1]);
       conditions += ` AND e.branch_id = ANY($${params.length})`;
     }
@@ -618,6 +624,8 @@ router.get('/models', authenticate, async (req, res) => {
 router.get('/brands', authenticate, async (req, res) => {
   try {
     const isAdmin = hasRole(req.user, 'admin');
+    const isSaler = hasRole(req.user, 'saler');
+    const isDriver = hasRole(req.user, 'driver');
     const investorOnly = isInvestorOnly(req.user);
     const branchIds = req.user.branch_ids || [];
     let conditions = 'e.is_deleted = false AND e.brand IS NOT NULL AND e.brand != \'\'';
@@ -626,7 +634,7 @@ router.get('/brands', authenticate, async (req, res) => {
     if (investorOnly) {
       params.push(req.user.id);
       conditions += ` AND e.owner_id = $${params.length}`;
-    } else if (!isAdmin) {
+    } else if (!isAdmin && !isSaler && !isDriver) {
       params.push(branchIds.length > 0 ? branchIds : [-1]);
       conditions += ` AND e.branch_id = ANY($${params.length})`;
     }

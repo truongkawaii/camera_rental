@@ -56,6 +56,7 @@ const Equipment = () => {
   // Add / Edit modal
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  const [isDuplicating, setIsDuplicating] = useState(false);
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [imagePreviews, setImagePreviews] = useState([]);
@@ -179,6 +180,7 @@ const Equipment = () => {
 
   const openAddModal = () => {
     setEditingItem(null);
+    setIsDuplicating(false);
     setFormData({ ...EMPTY_FORM, owner_id: isInvestor ? user?.id || '' : '' });
     setImagePreviews([]);
     setSelectedImageFiles([]);
@@ -188,6 +190,7 @@ const Equipment = () => {
 
   const openEditModal = (item) => {
     setEditingItem(item);
+    setIsDuplicating(false);
     setFormData({
       name: item.name, category: item.category,
       brand: item.brand || '',
@@ -206,8 +209,60 @@ const Equipment = () => {
     setShowModal(true);
   };
 
+  const openDuplicateModal = (item) => {
+    setEditingItem(null);
+    setIsDuplicating(true);
+    const suggestedCode = item.code ? `${item.code}-copy` : '';
+    setFormData({
+      name: item.name,
+      category: item.category,
+      brand: item.brand || '',
+      model: item.model || '',
+      price_per_day: item.price_per_day,
+      price_per_session: item.price_per_session || '',
+      price_per_day_discount: item.price_per_day_discount || '',
+      discount_day_threshold: item.discount_day_threshold || '',
+      code: suggestedCode,
+      condition: item.condition || 'good',
+      branch_id: item.branch_id || '',
+      owner_id: item.owner_id || '',
+    });
+    setImagePreviews(getAllImages(item.images));
+    setSelectedImageFiles([]);
+    setImagesDirty(true);
+    setShowModal(true);
+  };
+
+  const handleSelectTemplate = (item) => {
+    setIsDuplicating(true);
+    const suggestedCode = item.code ? `${item.code}-copy` : '';
+    setFormData((prev) => ({
+      ...prev,
+      name: item.name,
+      category: item.category,
+      brand: item.brand || '',
+      model: item.model || '',
+      price_per_day: item.price_per_day,
+      price_per_session: item.price_per_session || '',
+      price_per_day_discount: item.price_per_day_discount || '',
+      discount_day_threshold: item.discount_day_threshold || '',
+      code: prev.code ? prev.code : suggestedCode,
+      condition: item.condition || 'good',
+      branch_id: prev.branch_id || item.branch_id || '',
+      owner_id: prev.owner_id || item.owner_id || '',
+    }));
+    const imgs = getAllImages(item.images);
+    if (imgs.length > 0) {
+      setImagePreviews(imgs);
+      setSelectedImageFiles([]);
+      setImagesDirty(true);
+    }
+    toast.success(`Đã sao chép thông tin từ "${item.name}"`);
+  };
+
   const closeModal = () => {
     setShowModal(false);
+    setIsDuplicating(false);
   };
 
   const openRankingModal = async () => {
@@ -583,15 +638,15 @@ const Equipment = () => {
           canManage={canManage}
           currentPage={currentPage}
           totalPages={totalPages}
-          onPageChange={setCurrentPage}
+          onPageChange={handlePageChange}
           onEdit={openEditModal}
-          onDelete={setDeleteTarget}
+          onDelete={openDeleteModal}
+          onDuplicate={openDuplicateModal}
           month={month}
           sortBy={sortBy}
           sortOrder={sortOrder}
           statsVisibility={equipmentStatsVisibility}
           onSort={(col) => {
-            setCurrentPage(1);
             if (sortBy === col) {
               setSortOrder(sortOrder === 'ASC' ? 'DESC' : 'ASC');
             } else {
@@ -606,6 +661,7 @@ const Equipment = () => {
       {showModal && (
         <EquipmentModal
           editingItem={editingItem}
+          isDuplicating={isDuplicating}
           formData={formData}
           setFormData={setFormData}
           saving={saving}
@@ -614,6 +670,8 @@ const Equipment = () => {
           branches={branches}
           owners={owners}
           canEditOwner={canEditOwner}
+          existingEquipment={equipment}
+          onSelectTemplate={handleSelectTemplate}
           imagePreviews={imagePreviews}
           imagesLoading={false}
           onImageSelect={handleImageSelect}

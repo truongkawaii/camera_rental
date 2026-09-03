@@ -1,5 +1,5 @@
 import React from 'react';
-import { Edit2, Trash2, Package, Building2, ArrowDown, ArrowUp, ArrowUpDown, UserRound } from 'lucide-react';
+import { Edit2, Trash2, Package, Building2, ArrowDown, ArrowUp, ArrowUpDown, UserRound, Copy } from 'lucide-react';
 import Pagination from '../../../components/Pagination';
 import { ConditionBadge } from '../utils';
 import LazyImage from '../../../components/LazyImage';
@@ -32,7 +32,7 @@ const EmptyState = () => (
 );
 
 /* ── Desktop Table Row ─────────────────────────────────────────── */
-const EquipmentRow = ({ item, canManage, statsVisibility, onEdit, onDelete }) => {
+const EquipmentRow = ({ item, canManage, statsVisibility, onEdit, onDelete, onDuplicate }) => {
   const td = 'px-4 py-4 bg-white border-y border-slate-100 group-hover:border-blue-100 transition-colors';
   const { hideSensitiveStats, hideMetrics } = getVisibilityFlags(statsVisibility);
 
@@ -190,6 +190,15 @@ const EquipmentRow = ({ item, canManage, statsVisibility, onEdit, onDelete }) =>
         <div className="flex items-center justify-end gap-1.5">
           {canManage && (
             <>
+              {onDuplicate && (
+                <button
+                  onClick={() => onDuplicate(item)}
+                  title="Nhân bản thiết bị"
+                  className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-50 text-slate-400 border border-slate-100 hover:bg-emerald-50 hover:text-emerald-500 hover:border-emerald-200 hover:shadow-md hover:shadow-emerald-100 transition-all"
+                >
+                  <Copy size={15} />
+                </button>
+              )}
               <button
                 onClick={() => onEdit(item)}
                 title="Chỉnh sửa"
@@ -221,6 +230,7 @@ const EquipmentList = ({
   onPageChange,
   onEdit,
   onDelete,
+  onDuplicate,
   month,
   sortBy,
   sortOrder,
@@ -308,6 +318,7 @@ const EquipmentList = ({
                 statsVisibility={statsVisibility}
                 onEdit={onEdit}
                 onDelete={onDelete}
+                onDuplicate={onDuplicate}
               />
             ))}
           </div>
@@ -374,6 +385,7 @@ const EquipmentList = ({
                   statsVisibility={statsVisibility}
                   onEdit={onEdit}
                   onDelete={onDelete}
+                  onDuplicate={onDuplicate}
                 />
               ))
             )}

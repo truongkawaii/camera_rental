@@ -1,5 +1,5 @@
 import React from 'react';
-import { Edit2, Trash2, Package, Building2, UserRound } from 'lucide-react';
+import { Edit2, Trash2, Package, Building2, UserRound, Copy } from 'lucide-react';
 import { ConditionBadge } from '../utils';
 import LazyImage from '../../../components/LazyImage';
 import { getFirstImage } from '../../../utils/formatters';
@@ -9,7 +9,7 @@ const getVisibilityFlags = (statsVisibility) => ({
   hideMetrics: statsVisibility === 'sensitive' || statsVisibility === 'metrics-only',
 });
 
-const EquipmentCard = ({ item, canManage, statsVisibility = 'full', onEdit, onDelete }) => {
+const EquipmentCard = ({ item, canManage, statsVisibility = 'full', onEdit, onDelete, onDuplicate }) => {
   const { hideSensitiveStats, hideMetrics } = getVisibilityFlags(statsVisibility);
 
   return (
@@ -131,6 +131,15 @@ const EquipmentCard = ({ item, canManage, statsVisibility = 'full', onEdit, onDe
       {/* Actions */}
       {canManage && (
         <div className="flex justify-end gap-2 mt-auto pt-3 border-t border-gray-50">
+          {onDuplicate && (
+            <button
+              onClick={() => onDuplicate(item)}
+              title="Nhân bản thiết bị"
+              className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 transition-colors"
+            >
+              <Copy size={18} />
+            </button>
+          )}
           <button
             onClick={() => onEdit(item)}
             className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors"

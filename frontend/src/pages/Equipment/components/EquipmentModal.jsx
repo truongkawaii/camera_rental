@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Edit2, Trash2, Package, X, Upload, Loader2 } from 'lucide-react';
+import { Edit2, Trash2, Package, X, Upload, Loader2, Copy } from 'lucide-react';
 import CustomSelect from '../../../components/CustomSelect';
 
 const CATEGORIES = ['Camera', 'Lens', 'Lighting', 'Phụ kiện', 'Other'];
@@ -12,6 +12,7 @@ const CONDITION_OPTIONS = [
 
 const EquipmentModal = ({
   editingItem,
+  isDuplicating = false,
   formData,
   setFormData,
   saving,
@@ -20,6 +21,8 @@ const EquipmentModal = ({
   branches,
   owners = [],
   canEditOwner = false,
+  existingEquipment = [],
+  onSelectTemplate,
   // image props
   imagePreviews,
   imagesLoading = false,
@@ -41,9 +44,21 @@ const EquipmentModal = ({
         {/* Header */}
         <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">
-              {editingItem ? 'Chỉnh Sửa Thiết Bị' : 'Thêm Thiết Bị Mới'}
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-2xl font-bold text-gray-900">
+                {editingItem ? 'Chỉnh Sửa Thiết Bị' : isDuplicating ? 'Nhân Bản Thiết Bị' : 'Thêm Thiết Bị Mới'}
+              </h2>
+              {isDuplicating && (
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold">
+                  Tạo từ mẫu
+                </span>
+              )}
+            </div>
+            {isDuplicating ? (
+              <p className="text-xs text-emerald-600 font-medium mt-1">
+                Đã sao chép thông tin từ thiết bị mẫu. Bạn có thể sửa nhanh các thông tin và mã thiết bị trước khi lưu.
+              </p>
+            ) : null}
             {imagesLoading && editingItem && (
               <div className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-primary">
                 <Loader2 size={13} className="animate-spin" />
@@ -60,6 +75,40 @@ const EquipmentModal = ({
         </div>
 
         <div className="flex-1 overflow-y-auto p-8">
+          {/* Template Selector for New Equipment */}
+          {!editingItem && existingEquipment?.length > 0 && (
+            <div className="mb-6 p-4 bg-gradient-to-r from-emerald-50/80 via-teal-50/60 to-slate-50 border border-emerald-200/80 rounded-2xl shadow-sm">
+              <div className="flex items-center gap-2 mb-2 text-xs font-bold text-emerald-800">
+                <Copy size={15} className="text-emerald-600" />
+                <span>Sao chép thông tin từ thiết bị có sẵn (Tùy chọn)</span>
+              </div>
+              <CustomSelect
+                options={[
+                  { value: '', label: '-- Chọn thiết bị mẫu để sao chép thông tin --' },
+                  ...existingEquipment.map((eq) => ({
+                    value: String(eq.id),
+                    label: `${eq.name} (${eq.code || 'Chưa có mã'})${eq.branch_name ? ` - ${eq.branch_name}` : ''}`
+                  }))
+                ]}
+                value=""
+                onChange={(val) => {
+                  if (!val) return;
+                  const template = existingEquipment.find((eq) => String(eq.id) === String(val));
+                  if (template && onSelectTemplate) {
+                    onSelectTemplate(template);
+                  }
+                }}
+                placeholder="Chọn thiết bị mẫu..."
+                showSearch={true}
+                className="h-[36px]"
+                buttonClassName="bg-white rounded-xl px-3 py-1 text-xs font-medium border-emerald-200 text-slate-700 shadow-sm"
+              />
+              <p className="text-[11px] text-emerald-600/90 mt-1.5 font-medium">
+                Tip: Chọn một thiết bị để tự động điền tên, model, danh mục, giá thuê và hình ảnh.
+              </p>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
 
             {/* ── Left: Form ── */}
