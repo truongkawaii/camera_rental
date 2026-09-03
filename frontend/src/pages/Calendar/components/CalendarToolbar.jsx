@@ -341,7 +341,12 @@ const CalendarToolbar = ({
                     <button
                       key={option.value}
                       onClick={() => {
-                        toggleFilterValue(fModel, option.value, setFModel);
+                        if (option.value === 'ALL' || isSelected(fModel, option.value)) {
+                          setFModel(['ALL']);
+                        } else {
+                          setFModel([option.value]);
+                        }
+                        setOpenDropdown(null);
                       }}
                       className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm transition-colors hover:bg-gray-50 active:bg-gray-100"
                     >
