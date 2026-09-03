@@ -217,11 +217,14 @@ const SaleTransfer = () => {
     });
   };
 
-  const progressPercent = summary.total_payable > 0
+  const isNegativePayable = summary.total_payable < 0;
+  const isPositivePayable = summary.total_payable > 0;
+
+  const progressPercent = isPositivePayable
     ? Math.min(100, Math.round((summary.total_transferred / summary.total_payable) * 100))
     : 0;
 
-  const isComplete = summary.remaining <= 0 && summary.total_payable > 0;
+  const isComplete = summary.remaining <= 0 && isPositivePayable;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50 px-4 py-4 sm:py-6 lg:px-8">
@@ -234,10 +237,12 @@ const SaleTransfer = () => {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex-1">
               <h1 className="text-xl sm:text-2xl lg:text-[28px] font-extrabold text-gray-900 tracking-tight leading-tight">
-                Chuyển Tiền Cho Admin
+                {isNegativePayable ? 'Quyết Toán Tiền Doanh Thu' : 'Chuyển Tiền Cho Admin'}
               </h1>
               <p className="text-[13px] sm:text-sm text-gray-400 mt-1.5 max-w-lg leading-relaxed">
-                Ghi nhận các lần bạn đã chuyển tiền doanh thu cho admin trong tháng
+                {isNegativePayable
+                  ? 'Theo dõi doanh thu, hoa hồng được nhận và các lần chuyển nộp trong tháng'
+                  : 'Ghi nhận các lần bạn đã chuyển tiền doanh thu cho admin trong tháng'}
               </p>
             </div>
             <div className="sm:w-48 lg:w-56 shrink-0">
@@ -248,23 +253,38 @@ const SaleTransfer = () => {
 
         {/* ═══════ Summary Cards ═══════ */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-          {/* Tổng phải nộp */}
+          {/* Card 1: Tổng phải nộp / Cần được thanh toán */}
           <div className="group relative overflow-hidden rounded-2xl bg-white border border-gray-100/80 shadow-[0_1px_2px_rgba(0,0,0,0.02),0_4px_12px_rgba(0,0,0,0.03)] hover:shadow-[0_2px_4px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] hover:-translate-y-0.5 transition-all duration-300">
-            <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-400 to-blue-300 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+            <div className={`absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r ${
+              isNegativePayable ? 'from-purple-400 to-indigo-300' : 'from-blue-400 to-blue-300'
+            } opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
             <div className="p-4 sm:p-5 flex items-center gap-4">
-              <div className="w-12 h-12 sm:w-[52px] sm:h-[52px] rounded-2xl bg-gradient-to-br from-blue-50 to-blue-100/50 flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] shrink-0 ring-1 ring-blue-100/50">
-                <Wallet size={22} className="text-blue-600 sm:size-[23px]" strokeWidth={1.8} />
+              <div className={`w-12 h-12 sm:w-[52px] sm:h-[52px] rounded-2xl flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] shrink-0 ring-1 ${
+                isNegativePayable
+                  ? 'bg-gradient-to-br from-purple-50 to-indigo-100/50 text-purple-600 ring-purple-100/50'
+                  : 'bg-gradient-to-br from-blue-50 to-blue-100/50 text-blue-600 ring-blue-100/50'
+              }`}>
+                <Wallet size={22} className="sm:size-[23px]" strokeWidth={1.8} />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-[11px] sm:text-xs font-semibold text-gray-400 tracking-wide uppercase mb-0.5">Tổng phải nộp</p>
-                <p className="text-lg sm:text-xl lg:text-[22px] font-extrabold text-gray-900 tracking-tight truncate">
-                  {fmtVND(summary.total_payable)}
+                <p className={`text-[11px] sm:text-xs font-semibold tracking-wide uppercase mb-0.5 ${
+                  isNegativePayable ? 'text-purple-600' : 'text-gray-400'
+                }`}>
+                  {isNegativePayable ? 'Tiền cần được thanh toán' : 'Tiền cần thanh toán cho admin'}
+                </p>
+                <p className={`text-lg sm:text-xl lg:text-[22px] font-extrabold tracking-tight truncate ${
+                  isNegativePayable ? 'text-purple-700' : 'text-gray-900'
+                }`}>
+                  {fmtVND(Math.abs(summary.total_payable))}
+                </p>
+                <p className="text-[10px] sm:text-[11px] text-gray-400 mt-0.5 truncate">
+                  {isNegativePayable ? 'Admin thanh toán cho nhân viên' : 'Nhân viên nộp cho admin'}
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Đã chuyển */}
+          {/* Card 2: Đã chuyển */}
           <div className="group relative overflow-hidden rounded-2xl bg-white border border-gray-100/80 shadow-[0_1px_2px_rgba(0,0,0,0.02),0_4px_12px_rgba(0,0,0,0.03)] hover:shadow-[0_2px_4px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] hover:-translate-y-0.5 transition-all duration-300">
             <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-emerald-400 to-emerald-300 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
             <div className="p-4 sm:p-5 flex items-center gap-4">
@@ -276,45 +296,78 @@ const SaleTransfer = () => {
                 <p className="text-lg sm:text-xl lg:text-[22px] font-extrabold text-emerald-600 tracking-tight truncate">
                   {fmtVND(summary.total_transferred)}
                 </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Còn phải nộp */}
-          <div className={`group relative overflow-hidden rounded-2xl border shadow-[0_1px_2px_rgba(0,0,0,0.02),0_4px_12px_rgba(0,0,0,0.03)] hover:shadow-[0_2px_4px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] hover:-translate-y-0.5 transition-all duration-300 ${
-            isComplete
-              ? 'bg-gradient-to-br from-emerald-50/80 to-green-50/60 border-emerald-200/60'
-              : 'bg-gradient-to-br from-rose-50/80 to-red-50/60 border-rose-200/60'
-          }`}>
-            <div className={`absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r ${
-              isComplete ? 'from-emerald-400 to-emerald-300' : 'from-rose-400 to-rose-300'
-            } opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
-            <div className="p-4 sm:p-5 flex items-center gap-4">
-              <div className={`w-12 h-12 sm:w-[52px] sm:h-[52px] rounded-2xl flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] shrink-0 ring-1 ${
-                isComplete
-                  ? 'bg-white text-emerald-600 ring-emerald-100'
-                  : 'bg-white text-rose-500 ring-rose-100'
-              }`}>
-                {isComplete ? <CheckCircle2 size={22} className="sm:size-[23px]" strokeWidth={1.8} /> : <Send size={22} className="sm:size-[23px]" strokeWidth={1.8} />}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-[11px] sm:text-xs font-semibold text-gray-400 tracking-wide uppercase mb-0.5">Còn phải nộp</p>
-                <p className={`text-lg sm:text-xl lg:text-[22px] font-extrabold tracking-tight truncate ${
-                  isComplete ? 'text-emerald-700' : 'text-rose-600'
-                }`}>
-                  {isComplete ? (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500 text-white text-xs sm:text-sm font-semibold tracking-normal shadow-sm shadow-emerald-200">
-                      <CheckCircle2 size={14} strokeWidth={2.5} /> Đã nộp đủ
-                    </span>
-                  ) : fmtVND(summary.remaining)}
+                <p className="text-[10px] sm:text-[11px] text-gray-400 mt-0.5 truncate">
+                  Đã ghi nhận trong tháng
                 </p>
               </div>
             </div>
           </div>
+
+          {/* Card 3: Còn phải nộp / Admin cần chi trả */}
+          {isNegativePayable ? (
+            <div className="group relative overflow-hidden rounded-2xl border shadow-[0_1px_2px_rgba(0,0,0,0.02),0_4px_12px_rgba(0,0,0,0.03)] hover:shadow-[0_2px_4px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] hover:-translate-y-0.5 transition-all duration-300 bg-gradient-to-br from-indigo-50/80 to-purple-50/60 border-indigo-200/60">
+              <div className="p-4 sm:p-5 flex items-center gap-4">
+                <div className="w-12 h-12 sm:w-[52px] sm:h-[52px] rounded-2xl flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] shrink-0 ring-1 bg-white text-indigo-600 ring-indigo-100">
+                  <TrendingUp size={22} className="sm:size-[23px]" strokeWidth={1.8} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] sm:text-xs font-semibold text-indigo-600 tracking-wide uppercase mb-0.5">Admin cần chi trả</p>
+                  <p className="text-lg sm:text-xl lg:text-[22px] font-extrabold text-indigo-700 tracking-tight truncate">
+                    {fmtVND(Math.abs(summary.total_payable))}
+                  </p>
+                  <p className="text-[10px] sm:text-[11px] text-indigo-500 mt-0.5 truncate">
+                    Hoa hồng chờ admin thanh toán
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className={`group relative overflow-hidden rounded-2xl border shadow-[0_1px_2px_rgba(0,0,0,0.02),0_4px_12px_rgba(0,0,0,0.03)] hover:shadow-[0_2px_4px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] hover:-translate-y-0.5 transition-all duration-300 ${
+              isComplete
+                ? 'bg-gradient-to-br from-emerald-50/80 to-green-50/60 border-emerald-200/60'
+                : 'bg-gradient-to-br from-rose-50/80 to-red-50/60 border-rose-200/60'
+            }`}>
+              <div className={`absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r ${
+                isComplete ? 'from-emerald-400 to-emerald-300' : 'from-rose-400 to-rose-300'
+              } opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
+              <div className="p-4 sm:p-5 flex items-center gap-4">
+                <div className={`w-12 h-12 sm:w-[52px] sm:h-[52px] rounded-2xl flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] shrink-0 ring-1 ${
+                  isComplete
+                    ? 'bg-white text-emerald-600 ring-emerald-100'
+                    : 'bg-white text-rose-500 ring-rose-100'
+                }`}>
+                  {isComplete ? <CheckCircle2 size={22} className="sm:size-[23px]" strokeWidth={1.8} /> : <Send size={22} className="sm:size-[23px]" strokeWidth={1.8} />}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] sm:text-xs font-semibold text-gray-400 tracking-wide uppercase mb-0.5">Còn phải nộp</p>
+                  <p className={`text-lg sm:text-xl lg:text-[22px] font-extrabold tracking-tight truncate ${
+                    isComplete ? 'text-emerald-700' : 'text-rose-600'
+                  }`}>
+                    {isComplete ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500 text-white text-xs sm:text-sm font-semibold tracking-normal shadow-sm shadow-emerald-200">
+                        <CheckCircle2 size={14} strokeWidth={2.5} /> Đã nộp đủ
+                      </span>
+                    ) : fmtVND(summary.remaining)}
+                  </p>
+                  <p className="text-[10px] sm:text-[11px] text-gray-400 mt-0.5 truncate">
+                    {isComplete ? 'Hoàn thành nộp doanh thu' : 'Số dư cần chuyển nộp tiếp'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
+        {/* ═══════ Banner thông báo khi nhân viên được nhận tiền ═══════ */}
+        {isNegativePayable && (
+          <div className="flex items-center gap-3 p-4 rounded-2xl bg-gradient-to-r from-indigo-50/90 to-purple-50/80 border border-indigo-100 text-indigo-900 text-xs sm:text-sm font-medium shadow-sm">
+            <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse shrink-0" />
+            <span>Tháng này hoa hồng của bạn vượt doanh thu thu hộ. Bạn <strong>không cần chuyển nộp tiền</strong>, Admin sẽ quyết toán và thanh toán <strong>{fmtVND(Math.abs(summary.total_payable))}</strong> cho bạn.</span>
+          </div>
+        )}
+
         {/* ═══════ Progress Bar ═══════ */}
-        {summary.total_payable > 0 && (
+        {isPositivePayable && (
           <div className="relative overflow-hidden rounded-2xl bg-white border border-gray-100/80 shadow-[0_1px_2px_rgba(0,0,0,0.02),0_4px_12px_rgba(0,0,0,0.03)] p-4 sm:p-5">
             {/* Decorative dots */}
             <div className="absolute top-3 right-3 flex gap-1">
