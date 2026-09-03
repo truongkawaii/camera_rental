@@ -30,12 +30,15 @@ const EquipmentModal = ({
   onRemoveImage,
   onSetPrimary,
 }) => {
+  const [selectedTemplateId, setSelectedTemplateId] = React.useState('');
+
   useEffect(() => {
     document.body.style.overflow = 'hidden';
+    setSelectedTemplateId('');
     return () => {
       document.body.style.overflow = '';
     };
-  }, []);
+  }, [editingItem]);
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[200] p-4">
@@ -83,24 +86,24 @@ const EquipmentModal = ({
                 <span>Sao chép thông tin từ thiết bị có sẵn (Tùy chọn)</span>
               </div>
               <CustomSelect
-                options={[
-                  { value: '', label: '-- Chọn thiết bị mẫu để sao chép thông tin --' },
-                  ...existingEquipment.map((eq) => ({
-                    value: String(eq.id),
-                    label: `${eq.name} (${eq.code || 'Chưa có mã'})${eq.branch_name ? ` - ${eq.branch_name}` : ''}`
-                  }))
-                ]}
-                value=""
+                options={existingEquipment.map((eq) => ({
+                  id: String(eq.id),
+                  name: `${eq.name} (${eq.code || 'Chưa có mã'})${eq.branch_name ? ` - ${eq.branch_name}` : ''}`
+                }))}
+                value={selectedTemplateId}
                 onChange={(val) => {
+                  setSelectedTemplateId(val);
                   if (!val) return;
                   const template = existingEquipment.find((eq) => String(eq.id) === String(val));
                   if (template && onSelectTemplate) {
                     onSelectTemplate(template);
                   }
                 }}
-                placeholder="Chọn thiết bị mẫu..."
+                placeholder="-- Chọn thiết bị mẫu để sao chép thông tin --"
                 showSearch={true}
-                className="h-[36px]"
+                labelField="name"
+                valueField="id"
+                className="h-[38px]"
                 buttonClassName="bg-white rounded-xl px-3 py-1 text-xs font-medium border-emerald-200 text-slate-700 shadow-sm"
               />
               <p className="text-[11px] text-emerald-600/90 mt-1.5 font-medium">

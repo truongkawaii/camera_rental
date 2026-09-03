@@ -27,6 +27,7 @@ const Equipment = () => {
   const [owners, setOwners] = useState([]);
   const [models, setModels] = useState([]);
   const [brands, setBrands] = useState([]);
+  const [allTemplates, setAllTemplates] = useState([]);
   
   // Model & Brand filters
   const [modelFilter, setModelFilter] = useState('');
@@ -89,6 +90,7 @@ const Equipment = () => {
   }, [canEditOwner]);
   useEffect(() => { loadModels(); }, []);
   useEffect(() => { loadBrands(); }, []);
+  useEffect(() => { loadAllTemplates(); }, []);
 
   // Debounce search input
   useEffect(() => {
@@ -141,6 +143,15 @@ const Equipment = () => {
       setBrands(res.data.data || []);
     } catch (err) {
       console.error('Failed to load brands:', err);
+    }
+  }, []);
+
+  const loadAllTemplates = useCallback(async () => {
+    try {
+      const res = await getEquipment(1, 100, '', 'name', 'ASC');
+      setAllTemplates(res.data?.data || []);
+    } catch (err) {
+      console.error('Failed to load templates:', err);
     }
   }, []);
 
@@ -236,27 +247,24 @@ const Equipment = () => {
   const handleSelectTemplate = (item) => {
     setIsDuplicating(true);
     const suggestedCode = item.code ? `${item.code}-copy` : '';
-    setFormData((prev) => ({
-      ...prev,
-      name: item.name,
-      category: item.category,
+    setFormData({
+      name: item.name || '',
+      category: item.category || 'Camera',
       brand: item.brand || '',
       model: item.model || '',
-      price_per_day: item.price_per_day,
+      price_per_day: item.price_per_day || '',
       price_per_session: item.price_per_session || '',
       price_per_day_discount: item.price_per_day_discount || '',
       discount_day_threshold: item.discount_day_threshold || '',
-      code: prev.code ? prev.code : suggestedCode,
+      code: suggestedCode,
       condition: item.condition || 'good',
-      branch_id: prev.branch_id || item.branch_id || '',
-      owner_id: prev.owner_id || item.owner_id || '',
-    }));
+      branch_id: item.branch_id || '',
+      owner_id: item.owner_id || '',
+    });
     const imgs = getAllImages(item.images);
-    if (imgs.length > 0) {
-      setImagePreviews(imgs);
-      setSelectedImageFiles([]);
-      setImagesDirty(true);
-    }
+    setImagePreviews(imgs);
+    setSelectedImageFiles([]);
+    setImagesDirty(imgs.length > 0);
     toast.success(`Đã sao chép thông tin từ "${item.name}"`);
   };
 
@@ -351,6 +359,7 @@ const Equipment = () => {
       }
       setShowModal(false);
       loadEquipment();
+      loadAllTemplates();
     } catch (err) {
       toast.error('Lưu thất bại. Vui lòng thử lại.');
     } finally {
@@ -366,6 +375,7 @@ const Equipment = () => {
       setDeleteTarget(null);
       toast.success('Đã xóa thiết bị');
       loadEquipment();
+      loadAllTemplates();
     } catch (err) {
       toast.error('Xóa thất bại. Thiết bị này có thể đang trong một đơn thuê.');
     } finally {
@@ -671,7 +681,7 @@ const Equipment = () => {
           branches={branches}
           owners={owners}
           canEditOwner={canEditOwner}
-          existingEquipment={equipment}
+          existingEquipment={allTemplates.length > 0 ? allTemplates : equipment}
           onSelectTemplate={handleSelectTemplate}
           imagePreviews={imagePreviews}
           imagesLoading={false}
