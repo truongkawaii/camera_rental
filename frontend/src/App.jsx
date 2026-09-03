@@ -179,6 +179,7 @@ function AuthGate() {
               items: [
                 { to: '/rentals', icon: <Calendar size={18} />, label: 'Đơn Thuê', visible: true },
                 { to: '/calendar', icon: <Calendar size={18} />, label: 'Lịch Trình', visible: true },
+                { to: '/sale-transfers', icon: <Wallet size={18} />, label: 'Chuyển Tiền', visible: isSaler },
                 { to: '/branches', icon: <Store size={18} />, label: 'Cơ Sở', visible: isAdmin },
                 { to: '/activity', icon: <Activity size={18} />, label: 'Nhật Ký', visible: isAdmin },
               ]
