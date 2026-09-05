@@ -224,35 +224,39 @@ const CalendarRow = React.memo(({
         onTouchStart={e => handleHoverStart(eq, e)}
         onTouchCancel={e => handleHoverEnd(e)}
         onContextMenu={e => e.preventDefault()}
-        className={`${leftColClass} calendar-equip-col select-none sticky left-0 z-20 bg-white border-r border-slate-100 flex flex-col justify-center px-2 md:px-4 py-1.5 md:py-2 shadow-[2px_0_10px_-8px_rgba(15,23,42,0.3)] cursor-pointer`}
+        className={`${leftColClass} calendar-equip-col select-none sticky left-0 z-20 bg-white border-r border-slate-100 flex flex-col justify-center px-1.5 md:px-4 py-1.5 md:py-2 shadow-[2px_0_10px_-8px_rgba(15,23,42,0.3)] cursor-pointer`}
       >
-        <span className="font-semibold text-slate-800 truncate text-[11px] md:text-sm lg:text-base" title={eq.name}>{eq.name}</span>
-        <div className="mt-0.5 md:mt-1 flex min-w-0 items-center gap-1.5">
-          <span className="min-w-0 truncate text-[10px] md:text-xs font-medium text-violet-500/80" title={eq.code}>{eq.code}</span>
-          {isMaintenance && (
-            <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-sky-200 bg-sky-50 px-1 py-0.5 text-[7.5px] md:text-[9px] font-bold leading-none text-sky-700">
-              <Wrench size={8} className="shrink-0" /><span>Bảo dưỡng</span>
+        <div className="flex flex-col gap-1 w-full">
+          <div className="flex items-start justify-between gap-1 w-full">
+            <span className="font-bold text-slate-800 text-[11px] md:text-sm lg:text-base leading-tight break-all whitespace-normal" title={eq.code}>
+              {eq.code}
             </span>
-          )}
-        </div>
-        <div className="flex flex-col gap-0.5 mt-0.5 md:mt-1">
-          {eq.current_branch_id && eq.current_branch_id !== eq.branch_id ? (
-            <div
-              className="flex items-center gap-1 text-[10px] md:text-xs font-semibold text-indigo-600 truncate"
-              title={`Đang ở cơ sở: ${eq.current_branch_name}`}
-            >
-              <Home size={10} className="text-indigo-500 shrink-0" />
-              <span className="truncate">{eq.current_branch_name || 'Cơ sở khác'}</span>
-            </div>
-          ) : (
-            <div
-              className="flex items-center gap-1 text-[10px] md:text-xs font-semibold text-slate-500 truncate"
-              title={eq.branch_name || 'Hệ thống'}
-            >
-              <Home size={10} className="text-slate-400 shrink-0" />
-              <span className="truncate">{eq.branch_name || 'Hệ thống'}</span>
-            </div>
-          )}
+            {isMaintenance && (
+              <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-sky-200 bg-sky-50 px-1 py-0.5 text-[7.5px] md:text-[9px] font-bold leading-none text-sky-700">
+                <Wrench size={8} className="shrink-0" />
+              </span>
+            )}
+          </div>
+          
+          <div className="flex flex-col gap-0.5">
+            {eq.current_branch_id && eq.current_branch_id !== eq.branch_id ? (
+              <div
+                className="flex items-start gap-1 text-[10px] md:text-xs font-semibold text-indigo-600 leading-tight whitespace-normal break-words"
+                title={`Đang ở cơ sở: ${eq.current_branch_name}`}
+              >
+                <Home size={10} className="text-indigo-500 shrink-0 mt-0.5" />
+                <span>{eq.current_branch_name || 'Cơ sở khác'}</span>
+              </div>
+            ) : (
+              <div
+                className="flex items-start gap-1 text-[10px] md:text-xs font-semibold text-slate-500 leading-tight whitespace-normal break-words"
+                title={eq.branch_name || 'Hệ thống'}
+              >
+                <Home size={10} className="text-slate-400 shrink-0 mt-0.5" />
+                <span>{eq.branch_name || 'Hệ thống'}</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
