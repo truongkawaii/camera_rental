@@ -189,7 +189,7 @@ function AuthGate() {
               items: [
                 { to: '/equipment', icon: <Package size={18} />, label: 'Thiết Bị', visible: true },
                 { to: '/maintenance', icon: <Wrench size={18} />, label: 'Bảo Trì', visible: isAdmin || isCameraManager },
-                { to: '/equipment-transfers', icon: <ArrowRightLeft size={18} />, label: 'Điều Chuyển', visible: isAdmin || isCameraManager },
+                { to: '/equipment-transfers', icon: <ArrowRightLeft size={18} />, label: 'Điều Chuyển', visible: isAdmin || isCameraManager || isDriver },
               ]
             },
             {
@@ -301,7 +301,7 @@ function AuthGate() {
             <Route path="/"          element={(isAdmin || isCameraManager || isInvestor || isDriver) ? <DashboardV1 key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/equipment" element={<Equipment key={activeRole} />} />
             <Route path="/maintenance" element={<Equipment key={activeRole + '-maintenance'} initialTab="maintenance" />} />
-            <Route path="/equipment-transfers" element={<EquipmentTransfers key={activeRole} />} />
+            <Route path="/equipment-transfers" element={(isAdmin || isCameraManager || isDriver) ? <EquipmentTransfers key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/rentals"   element={<Rentals key={activeRole} />} />
             <Route path="/calendar"  element={<CalendarPage key={activeRole} />} />
             <Route path="/customers" element={<Customers key={activeRole} />} />

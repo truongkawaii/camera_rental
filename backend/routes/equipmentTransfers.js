@@ -6,6 +6,14 @@ const { authenticate, requireAdmin, requireAdminOrManager, hasRole } = require('
 
 const router = express.Router();
 
+// Middleware: admin, quản lý camera, hoặc giao nhận máy (driver) đều được quản lý điều chuyển
+const requireTransferManager = (req, res, next) => {
+  if (!hasRole(req.user, 'admin', 'camera_manager', 'driver')) {
+    return res.status(403).json({ error: 'Chỉ Admin, Quản lý Camera hoặc nhân viên Giao nhận máy mới có quyền quản lý điều chuyển.' });
+  }
+  next();
+};
+
 // ─────────────────────────────────────────────────────────────────────
 // GET /api/equipment-transfers
 // Query: ?month=YYYY-MM | ?status=pending | ?equipment_id=123
@@ -88,7 +96,7 @@ router.get('/:id', authenticate, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────
 // POST /api/equipment-transfers — Tạo yêu cầu điều chuyển
 // ─────────────────────────────────────────────────────────────────────
-router.post('/', authenticate, requireAdminOrManager, async (req, res) => {
+router.post('/', authenticate, requireTransferManager, async (req, res) => {
   try {
     const { equipment_id, to_branch_id, reason, notes } = req.body;
 
@@ -141,7 +149,7 @@ router.post('/', authenticate, requireAdminOrManager, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────
 // PUT /api/equipment-transfers/:id/approve — Admin duyệt
 // ─────────────────────────────────────────────────────────────────────
-router.put('/:id/approve', authenticate, requireAdmin, async (req, res) => {
+router.put('/:id/approve', authenticate, requireTransferManager, async (req, res) => {
   try {
     const { id } = req.params;
     const transfer = await pool.query('SELECT * FROM equipment_transfers WHERE id = $1 AND is_deleted = false', [id]);
@@ -163,7 +171,7 @@ router.put('/:id/approve', authenticate, requireAdmin, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────
 // PUT /api/equipment-transfers/:id/reject — Admin từ chối
 // ─────────────────────────────────────────────────────────────────────
-router.put('/:id/reject', authenticate, requireAdmin, async (req, res) => {
+router.put('/:id/reject', authenticate, requireTransferManager, async (req, res) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
@@ -186,7 +194,7 @@ router.put('/:id/reject', authenticate, requireAdmin, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────
 // PUT /api/equipment-transfers/:id/complete — Hoàn tất (cập nhật current_branch_id)
 // ─────────────────────────────────────────────────────────────────────
-router.put('/:id/complete', authenticate, requireAdmin, async (req, res) => {
+router.put('/:id/complete', authenticate, requireTransferManager, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -248,8 +256,8 @@ router.put('/:id/cancel', authenticate, async (req, res) => {
     const t = transfer.rows[0];
     if (!['pending'].includes(t.status)) return res.status(400).json({ error: 'Chỉ huỷ được yêu cầu đang chờ' });
 
-    // Only creator or admin can cancel
-    if (t.requested_by !== req.user.id && !hasRole(req.user, 'admin')) {
+    // Only creator, driver, camera_manager or admin can cancel
+    if (t.requested_by !== req.user.id && !hasRole(req.user, 'admin', 'camera_manager', 'driver')) {
       return res.status(403).json({ error: 'Bạn không có quyền huỷ yêu cầu này' });
     }
 
