@@ -145,6 +145,13 @@ router.get('/', authenticate, async (req, res) => {
              ) img),
             '[]'::json
           ) as images,
+          EXISTS(
+            SELECT 1 FROM equipment_maintenance em 
+            WHERE em.equipment_id = e.id AND em.is_deleted = false 
+              AND em.status = 'Đang bảo trì' 
+              AND em.maintenance_date <= NOW() 
+              AND (em.completed_date IS NULL OR em.completed_date >= NOW())
+          ) as is_under_maintenance,
           (SELECT COUNT(*) FROM rentals r WHERE r.equipment_id = e.id AND r.is_deleted = false AND r.status != 'cancelled'${monthFilter}) as rental_count,
           (SELECT COALESCE(SUM(r.total_price), 0) FROM rentals r WHERE r.equipment_id = e.id AND r.is_deleted = false AND r.status != 'cancelled'${monthFilter}) as total_sales,
           (SELECT COALESCE(SUM(r.total_price), 0) FROM rentals r WHERE r.equipment_id = e.id AND r.is_deleted = false AND r.status = 'completed'${monthFilter}) as total_revenue,

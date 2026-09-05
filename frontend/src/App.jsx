@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
-import { BarChart3, Package, Calendar, Users, LogOut, Menu, X, Activity, ShieldCheck, Store, TrendingUp, Wallet, ChevronDown, Percent, GitBranch, PieChart, Send, Megaphone, Receipt, DollarSign, ArrowRightLeft, FileText } from 'lucide-react';
+import { BarChart3, Package, Calendar, Users, LogOut, Menu, X, Activity, ShieldCheck, Store, TrendingUp, Wallet, ChevronDown, Percent, GitBranch, PieChart, Send, Megaphone, Receipt, DollarSign, ArrowRightLeft, FileText, Wrench } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Dashboard from './pages/Dashboard';
 import DashboardV1 from './pages/DashboardV1';
@@ -188,6 +188,7 @@ function AuthGate() {
               title: 'Tài sản',
               items: [
                 { to: '/equipment', icon: <Package size={18} />, label: 'Thiết Bị', visible: true },
+                { to: '/maintenance', icon: <Wrench size={18} />, label: 'Bảo Trì', visible: isAdmin || isCameraManager },
                 { to: '/equipment-transfers', icon: <ArrowRightLeft size={18} />, label: 'Điều Chuyển', visible: isAdmin || isCameraManager },
               ]
             },
@@ -299,6 +300,7 @@ function AuthGate() {
           <Routes>
             <Route path="/"          element={(isAdmin || isCameraManager || isInvestor || isDriver) ? <DashboardV1 key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/equipment" element={<Equipment key={activeRole} />} />
+            <Route path="/maintenance" element={<Equipment key={activeRole + '-maintenance'} initialTab="maintenance" />} />
             <Route path="/equipment-transfers" element={<EquipmentTransfers key={activeRole} />} />
             <Route path="/rentals"   element={<Rentals key={activeRole} />} />
             <Route path="/calendar"  element={<CalendarPage key={activeRole} />} />

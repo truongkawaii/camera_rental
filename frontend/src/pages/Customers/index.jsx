@@ -19,6 +19,7 @@ const Customers = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
 
   // Add / Edit modal
   const [showModal, setShowModal] = useState(false);
@@ -82,12 +83,12 @@ const Customers = () => {
 
   useEffect(() => {
     loadCustomers();
-  }, [currentPage, debouncedSearch]);
+  }, [currentPage, debouncedSearch, filterStatus]);
 
   const loadCustomers = async () => {
     setLoading(true);
     try {
-      const response = await getCustomers(currentPage, 9, debouncedSearch);
+      const response = await getCustomers(currentPage, 9, debouncedSearch, filterStatus);
       setCustomers(response.data.data);
       setTotalPages(response.data.pagination.totalPages);
     } catch (error) {
@@ -242,6 +243,27 @@ const Customers = () => {
           </div>
           
           <div className="flex flex-col md:flex-row items-center gap-3 w-full xl:w-auto">
+            <div className="flex bg-white p-1 rounded-xl shadow-sm border border-gray-100">
+              <button
+                onClick={() => { setFilterStatus('all'); setCurrentPage(1); }}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${filterStatus === 'all' ? 'bg-primary/10 text-primary' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+              >
+                Tất cả
+              </button>
+              <button
+                onClick={() => { setFilterStatus('normal'); setCurrentPage(1); }}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${filterStatus === 'normal' ? 'bg-primary/10 text-primary' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+              >
+                Khách hàng
+              </button>
+              <button
+                onClick={() => { setFilterStatus('restricted'); setCurrentPage(1); }}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${filterStatus === 'restricted' ? 'bg-red-50 text-red-600' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+              >
+                Hạn chế
+              </button>
+            </div>
+            
             <div className="relative w-full md:flex-1 xl:w-80 group">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-primary transition-colors" size={18} />
               <input

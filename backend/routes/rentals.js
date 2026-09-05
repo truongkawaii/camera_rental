@@ -117,7 +117,18 @@ const checkAvailability = async (equipmentId, startDate, endDate, excludeRentalI
     const params = [equipmentId, startDate, endDate];
     if (excludeRentalId) params.push(excludeRentalId);
     const result = await pool.query(query, params);
-    return result.rows.length === 0;
+    if (result.rows.length > 0) return false;
+
+    // Check maintenance overlap
+    const maintenanceQuery = `
+      SELECT id FROM equipment_maintenance
+      WHERE equipment_id = $1
+        AND is_deleted = false
+        AND status IN ('Đã lên lịch', 'Đang bảo trì')
+        AND (maintenance_date <= $3 AND (completed_date IS NULL OR completed_date >= $2))
+    `;
+    const maintenanceResult = await pool.query(maintenanceQuery, [equipmentId, startDate, endDate]);
+    return maintenanceResult.rows.length === 0;
   } catch (err) {
     console.error('Check availability error:', err);
     throw err;
@@ -153,6 +164,13 @@ const findConflictingAccessoryIds = async (accessoryIds, startDate, endDate, exc
           AND r.status NOT IN ('cancelled', 'completed')
           AND (r.start_date <= $3 AND r.end_date >= $2)
           ${excludeClause}
+        UNION
+        SELECT em.equipment_id AS conflict_id
+        FROM equipment_maintenance em
+        WHERE em.equipment_id = ANY($1)
+          AND em.is_deleted = false
+          AND em.status IN ('Đã lên lịch', 'Đang bảo trì')
+          AND (em.maintenance_date <= $3 AND (em.completed_date IS NULL OR em.completed_date >= $2))
       ) conflicts
     `;
     const result = await pool.query(query, params);

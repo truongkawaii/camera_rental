@@ -29,6 +29,7 @@ const commissionConfigsRouter = require('./routes/commissionConfigs');
 const collaboratorsRouter = require('./routes/collaborators');
 const saleTransfersRouter = require('./routes/saleTransfers');
 const equipmentTransfersRouter = require('./routes/equipmentTransfers');
+const maintenanceRouter = require('./routes/maintenance');
 
 
 const app = express();
@@ -103,6 +104,7 @@ app.use('/api/images', imagesRouter);
 app.use('/api/ads-costs', adsCostsRouter);
 app.use('/api/misc-costs', miscCostsRouter);
 app.use('/api/blacklist', blacklistRouter);
+app.use('/api/maintenance', maintenanceRouter);
 app.use('/api/commission-configs', commissionConfigsRouter);
 app.use('/api/collaborators', collaboratorsRouter);
 app.use('/api/sale-transfers', saleTransfersRouter);

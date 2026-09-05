@@ -1,19 +1,53 @@
 import React from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
+// ── Header with inline prev/next nav buttons on mobile
 const CalendarGridView = React.memo(({
   leftColClass,
   displayedDays,
   todayRef,
   rows,
   viewRef,
-  headerRef
+  headerRef,
+  // Mobile day-window navigation (only in month view)
+  canScrollLeft,
+  canScrollRight,
+  handleScroll,
+  isWeekView,
 }) => (
   <div ref={viewRef} className="min-w-full block">
     <div ref={headerRef} className="flex sticky top-0 z-30 bg-white border-b border-slate-200 shadow-[0_1px_3px_rgba(15,23,42,0.06)]">
-      <div className={`${leftColClass} sticky left-0 z-40 bg-slate-50/95 flex items-center justify-center border-r border-slate-200/70`}>
+
+      {/* Left column header — on mobile, contains ◀ ▶ navigation */}
+      <div className={`${leftColClass} sticky left-0 z-40 bg-slate-50/95 flex flex-col items-center justify-center border-r border-slate-200/70`}>
         <span className="text-[11px] md:text-xs lg:text-sm font-semibold text-slate-400">Thiết bị</span>
+
+        {/* Mobile-only prev/next buttons — safe inside header, NOT overlapping day cells */}
+        {!isWeekView && (
+          <div className="flex items-center gap-0.5 mt-0.5 md:hidden">
+            <button
+              onClick={() => handleScroll('left')}
+              disabled={!canScrollLeft}
+              className="w-6 h-6 flex items-center justify-center rounded-md text-violet-600 disabled:text-slate-300 disabled:cursor-default active:bg-violet-100 active:scale-95 transition-all"
+              style={{ WebkitTapHighlightColor: 'transparent' }}
+              aria-label="Ngày trước"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => handleScroll('right')}
+              disabled={!canScrollRight}
+              className="w-6 h-6 flex items-center justify-center rounded-md text-violet-600 disabled:text-slate-300 disabled:cursor-default active:bg-violet-100 active:scale-95 transition-all"
+              style={{ WebkitTapHighlightColor: 'transparent' }}
+              aria-label="Ngày tiếp"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* Day header columns */}
       <div className="flex flex-1">
         {displayedDays.map((day, idx) => (
           <div
@@ -53,7 +87,6 @@ const CalendarGrid = ({
   const headerRef = React.useRef(null);
   const [arrowTop, setArrowTop] = React.useState(null);
 
-  // Simple ref callback for the scroll container (no scroll listener needed — browser virtualizes via CSS)
   const setScrollRef = React.useCallback((node) => {
     scrollRef.current = node;
   }, [scrollRef]);
@@ -105,7 +138,8 @@ const CalendarGrid = ({
       )}
       <div
         ref={setScrollRef}
-        className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-auto no-scrollbar calendar-scroll-container relative transition-opacity duration-150 ${(loading || !isReady) ? 'opacity-0' : 'opacity-100'}`}
+        className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden no-scrollbar calendar-scroll-container relative transition-opacity duration-150 ${(loading || !isReady) ? 'opacity-0' : 'opacity-100'}`}
+        style={{ overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch' }}
       >
         <CalendarGridView
           leftColClass={leftColClass}
@@ -114,8 +148,12 @@ const CalendarGrid = ({
           rows={rows}
           viewRef={viewRef}
           headerRef={headerRef}
+          canScrollLeft={canScrollLeft}
+          canScrollRight={canScrollRight}
+          handleScroll={handleScroll}
+          isWeekView={isWeekView}
         />
-        {/* Sentinel for IntersectionObserver — rendered OUTSIDE row memo to stay in sync with real allEquipment.length */}
+        {/* Sentinel for IntersectionObserver */}
         {loadedCount < totalCount && (
           <div
             ref={sentinelRef}
@@ -123,7 +161,6 @@ const CalendarGrid = ({
             style={{ top: loadedCount * 78, height: '1px' }}
           />
         )}
-        {/* Loading spinner — rendered outside row memo to avoid full list rebuild on loading state toggle */}
         {loadingMore && (
           <div className="flex items-center justify-center py-3 text-sm text-slate-400">
             <div className="flex items-center gap-2">
@@ -134,14 +171,15 @@ const CalendarGrid = ({
         )}
       </div>
 
+      {/* Desktop-only floating arrows (md+) — hidden on mobile to avoid blocking booking buttons */}
       {!isWeekView && (
         <>
           {canScrollLeft && (
             <button
               onClick={() => handleScroll('left')}
               style={arrowStyle}
-              className={`${arrowPositionClass} left-[6rem] md:left-[13rem] lg:left-[15rem] z-[45] w-10 h-10 bg-white border border-gray-100 rounded-full flex items-center justify-center text-purple-600 opacity-40 hover:opacity-100 hover:scale-110 active:scale-95 transition-[opacity,transform] duration-200 group/btn shadow-md`}
-              title="Cuộn sang trái"
+              className={`${arrowPositionClass} hidden md:flex left-[13rem] lg:left-[15rem] z-[45] w-10 h-10 bg-white border border-gray-100 rounded-full items-center justify-center text-purple-600 opacity-40 hover:opacity-100 hover:scale-110 active:scale-95 transition-[opacity,transform] duration-200 group/btn shadow-md`}
+              aria-label="Cuộn sang trái"
             >
               <ChevronLeft className="w-5 h-5 group-hover/btn:-translate-x-0.5 transition-transform" />
             </button>
@@ -150,8 +188,8 @@ const CalendarGrid = ({
             <button
               onClick={() => handleScroll('right')}
               style={arrowStyle}
-              className={`${arrowPositionClass} right-4 md:right-8 z-[45] w-10 h-10 bg-white shadow-md border border-gray-100 rounded-full flex items-center justify-center text-purple-600 opacity-40 hover:opacity-100 hover:scale-110 active:scale-95 transition-[opacity,transform] duration-200 group/btn`}
-              title="Cuộn sang phải"
+              className={`${arrowPositionClass} hidden md:flex right-8 z-[45] w-10 h-10 bg-white shadow-md border border-gray-100 rounded-full items-center justify-center text-purple-600 opacity-40 hover:opacity-100 hover:scale-110 active:scale-95 transition-[opacity,transform] duration-200 group/btn`}
+              aria-label="Cuộn sang phải"
             >
               <ChevronRight className="w-5 h-5 group-hover/btn:translate-x-0.5 transition-transform" />
             </button>

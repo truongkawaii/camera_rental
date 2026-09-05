@@ -17,15 +17,26 @@ router.get('/', async (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
   const search = req.query.search || '';
+  const filterStatus = req.query.filterStatus || 'all';
   const offset = (page - 1) * limit;
 
   try {
     let countQuery = 'SELECT COUNT(*) FROM customers WHERE is_deleted = false';
     let countParams = [];
+    let countParamIndex = 1;
+
     if (search) {
-      countQuery += ' AND (name ILIKE $1 OR phone ILIKE $1)';
+      countQuery += ` AND (name ILIKE $${countParamIndex} OR phone ILIKE $${countParamIndex})`;
       countParams.push(`%${search}%`);
+      countParamIndex++;
     }
+
+    if (filterStatus === 'normal') {
+      countQuery += ` AND NOT EXISTS (SELECT 1 FROM blacklist WHERE customer_id = customers.id AND is_deleted = false AND unblacklisted_at IS NULL)`;
+    } else if (filterStatus === 'restricted') {
+      countQuery += ` AND EXISTS (SELECT 1 FROM blacklist WHERE customer_id = customers.id AND is_deleted = false AND unblacklisted_at IS NULL)`;
+    }
+
     const countResult = await pool.query(countQuery, countParams);
     const totalCount = parseInt(countResult.rows[0].count);
 
@@ -54,9 +65,18 @@ router.get('/', async (req, res) => {
     `;
     
     let dataParams = [limit, offset];
+    let dataParamIndex = 3;
+
     if (search) {
-      dataQuery += ' AND (c.name ILIKE $3 OR c.phone ILIKE $3)';
+      dataQuery += ` AND (c.name ILIKE $${dataParamIndex} OR c.phone ILIKE $${dataParamIndex})`;
       dataParams.push(`%${search}%`);
+      dataParamIndex++;
+    }
+
+    if (filterStatus === 'normal') {
+      dataQuery += ` AND NOT EXISTS (SELECT 1 FROM blacklist WHERE customer_id = c.id AND is_deleted = false AND unblacklisted_at IS NULL)`;
+    } else if (filterStatus === 'restricted') {
+      dataQuery += ` AND EXISTS (SELECT 1 FROM blacklist WHERE customer_id = c.id AND is_deleted = false AND unblacklisted_at IS NULL)`;
     }
 
     dataQuery += `

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import { getEquipment, createEquipment, updateEquipment, deleteEquipment, uploadEquipmentImages, getBranches, getUsers, getEquipmentModels, getEquipmentBrands, getEquipmentRanking } from '../../api/client';
 import { Plus, FilterX, Search, X, SlidersHorizontal, ChevronDown, BarChart3 } from 'lucide-react';
 import { useToast, ToastContainer } from '../../components/Toast';
@@ -12,12 +12,17 @@ import EquipmentList from './components/EquipmentList';
 import EquipmentModal from './components/EquipmentModal';
 import DeleteModal from './components/DeleteModal';
 import EquipmentRankingModal from './components/EquipmentRankingModal';
+import MaintenanceTab from './components/MaintenanceTab';
 
 const isNewImagePreview = (image) => typeof image === 'string' && image.startsWith('data:image/');
 const getNewImageIndex = (previews, index) => previews.slice(0, index + 1).filter(isNewImagePreview).length - 1;
 
-const Equipment = () => {
+const Equipment = ({ initialTab }) => {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const isMaintenanceRoute = location.pathname === '/maintenance' || initialTab === 'maintenance' || searchParams.get('tab') === 'maintenance';
+  const [activeTab, setActiveTab] = useState(isMaintenanceRoute ? 'maintenance' : 'equipment');
   const [equipment, setEquipment] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -75,6 +80,14 @@ const Equipment = () => {
 
   const { toasts, toast, removeToast } = useToast();
   const { isAdmin, isSaler, isCameraManager, isInvestor, activeRole, user } = useAuth();
+
+  useEffect(() => {
+    if (location.pathname === '/maintenance' || searchParams.get('tab') === 'maintenance') {
+      setActiveTab('maintenance');
+    } else if (location.pathname === '/equipment' && !searchParams.get('tab')) {
+      setActiveTab('equipment');
+    }
+  }, [location.pathname, searchParams]);
   const canManage = isAdmin || isCameraManager || isInvestor;
   const canEditOwner = isAdmin || isCameraManager;
   const equipmentStatsVisibility = ['sale', 'saler', 'manager', 'camera_manager'].includes(activeRole)
@@ -389,56 +402,87 @@ const Equipment = () => {
 
         {/* Header */}
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-4">
-          <h1 className="text-3xl font-semibold text-gray-900">Thiết Bị</h1>
-          <div className="flex flex-col md:flex-row items-center gap-3 w-full xl:flex-1 xl:justify-end">
-            {/* Search Input */}
-            <div className="relative w-full md:flex-1 xl:max-w-2xl group">
-              <Search 
-                size={18} 
-                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors" 
-              />
-              <input
-                type="text"
-                placeholder="Tìm tên, mã, danh mục..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="box-border h-[35px] min-h-[35px] max-h-[35px] w-full py-0 pl-11 pr-10 leading-none bg-white border border-slate-200 rounded-xl focus:ring-4 focus:ring-primary/10 focus:border-primary outline-none transition-all shadow-sm text-[14px] font-medium"
-              />
-              {search && (
+          <div className="flex items-center gap-6">
+            <h1 className="text-3xl font-semibold text-gray-900">Thiết Bị</h1>
+            <div className="flex bg-white p-1 rounded-xl shadow-sm border border-gray-100">
+              <button
+                onClick={() => {
+                  setActiveTab('equipment');
+                  if (location.pathname === '/maintenance') {
+                    navigate('/equipment');
+                  }
+                }}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'equipment' ? 'bg-primary/10 text-primary' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+              >
+                Tài sản
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab('maintenance');
+                  if (location.pathname !== '/maintenance') {
+                    navigate('/maintenance');
+                  }
+                }}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'maintenance' ? 'bg-orange-50 text-orange-600' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+              >
+                Bảo trì
+              </button>
+            </div>
+          </div>
+          
+          {activeTab === 'equipment' && (
+            <div className="flex flex-col md:flex-row items-center gap-3 w-full xl:flex-1 xl:justify-end">
+              {/* Search Input */}
+              <div className="relative w-full md:flex-1 xl:max-w-2xl group">
+                <Search 
+                  size={18} 
+                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors" 
+                />
+                <input
+                  type="text"
+                  placeholder="Tìm tên, mã, danh mục..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="box-border h-[35px] min-h-[35px] max-h-[35px] w-full py-0 pl-11 pr-10 leading-none bg-white border border-slate-200 rounded-xl focus:ring-4 focus:ring-primary/10 focus:border-primary outline-none transition-all shadow-sm text-[14px] font-medium"
+                />
+                {search && (
+                  <button
+                    onClick={() => setSearch('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-rose-500 transition-colors"
+                    title="Xóa tìm kiếm"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+
+              {canManage && (
                 <button
-                  onClick={() => setSearch('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-rose-500 transition-colors"
-                  title="Xóa tìm kiếm"
+                  onClick={openAddModal}
+                  className="h-[35px] w-full md:w-auto bg-primary text-white px-4 rounded-xl flex items-center justify-center gap-2 hover:opacity-90 transition-all font-bold shadow-lg shadow-primary/20"
                 >
-                  <X size={16} />
+                  <Plus size={20} />
+                  Thêm Thiết Bị
+                </button>
+              )}
+
+              {isAdmin && (
+                <button
+                  onClick={openRankingModal}
+                  className="h-[35px] w-full md:w-auto bg-white text-slate-700 border border-slate-200 px-4 rounded-xl flex items-center justify-center gap-2 hover:border-orange-300 hover:text-orange-600 hover:bg-orange-50 transition-all font-semibold shadow-sm"
+                  title="Xem xếp hạng thiết bị"
+                >
+                  <BarChart3 size={18} />
+                  Xếp Hạng
                 </button>
               )}
             </div>
-
-            {canManage && (
-              <button
-                onClick={openAddModal}
-                className="h-[35px] w-full md:w-auto bg-primary text-white px-4 rounded-xl flex items-center justify-center gap-2 hover:opacity-90 transition-all font-bold shadow-lg shadow-primary/20"
-              >
-                <Plus size={20} />
-                Thêm Thiết Bị
-              </button>
-            )}
-
-            {isAdmin && (
-              <button
-                onClick={openRankingModal}
-                className="h-[35px] w-full md:w-auto bg-white text-slate-700 border border-slate-200 px-4 rounded-xl flex items-center justify-center gap-2 hover:border-orange-300 hover:text-orange-600 hover:bg-orange-50 transition-all font-semibold shadow-sm"
-                title="Xem xếp hạng thiết bị"
-              >
-                <BarChart3 size={18} />
-                Xếp Hạng
-              </button>
-            )}
-          </div>
+          )}
         </div>
 
-        {/* Filters Row: Cơ sở, Model, Brand & Chủ sở hữu */}
+        {activeTab === 'equipment' ? (
+          <>
+            {/* Filters Row: Cơ sở, Model, Brand & Chủ sở hữu */}
         {equipmentStatsVisibility !== 'sensitive' && (
           <div className="mb-3">
             {/* ── Mobile: Collapsible filter bar ── */}
@@ -642,7 +686,8 @@ const Equipment = () => {
         )}
 
         {/* List */}
-        <EquipmentList
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 mb-6 p-4">
+          <EquipmentList
           equipment={equipment}
           loading={loading}
           canManage={canManage}
@@ -705,9 +750,14 @@ const Equipment = () => {
           month={month}
           onClose={closeRankingModal}
         />
-      )}
+        )}
 
-      <ToastContainer toasts={toasts} onClose={removeToast} />
+        <ToastContainer toasts={toasts} onClose={removeToast} />
+      </>
+        ) : (
+          <MaintenanceTab equipmentList={equipment} />
+        )}
+      </div>
     </div>
   );
 };

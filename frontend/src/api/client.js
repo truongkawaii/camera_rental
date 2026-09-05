@@ -73,6 +73,12 @@ export const updateEquipment = (id, data) => api.put(`/equipment/${id}`, data);
 export const deleteEquipment = (id) => api.delete(`/equipment/${id}`);
 export const getEquipmentCalendar = (id) => api.get(`/equipment/${id}/calendar`);
 
+// Maintenance
+export const getMaintenance = (equipmentId = '') => api.get(`/maintenance${equipmentId ? `?equipment_id=${equipmentId}` : ''}`);
+export const createMaintenance = (data) => api.post('/maintenance', data);
+export const updateMaintenance = (id, data) => api.put(`/maintenance/${id}`, data);
+export const deleteMaintenance = (id) => api.delete(`/maintenance/${id}`);
+
 // Lightweight paginated equipment for calendar view (no heavy stats)
 export const getCalendarEquipment = (
   page = 1,
@@ -144,7 +150,7 @@ export const createRental = (data) => api.post('/rentals', data);
 export const updateRental = (id, data) => api.put(`/rentals/${id}`, data);
 export const updateRentalStatus = (id, status) => api.patch(`/rentals/${id}/status`, { status });
 export const deleteRental = (id) => api.delete(`/rentals/${id}`);
-export const getCustomers = (page = 1, limit = 10, search = '') => api.get(`/customers?page=${page}&limit=${limit}&search=${search}`);
+export const getCustomers = (page = 1, limit = 10, search = '', filterStatus = 'all') => api.get(`/customers?page=${page}&limit=${limit}&search=${search}&filterStatus=${filterStatus}`);
 export const createCustomer = (data) => api.post('/customers', data);
 export const updateCustomer = (id, data) => api.put(`/customers/${id}`, data);
 export const deleteCustomer = (id) => api.delete(`/customers/${id}`);

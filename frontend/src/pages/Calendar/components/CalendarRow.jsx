@@ -10,7 +10,9 @@ const STATUS_STYLES = {
   pending:  { bg: 'bg-amber-100',  pattern: 'pending-pattern',   border: '#d97706' },
   active:   { bg: 'bg-red-100',    pattern: 'active-pattern',    border: '#dc2626' },
   completed:{ bg: 'bg-emerald-100',pattern: 'completed-pattern', border: '#059669' },
-  cancelled:{ bg: 'bg-red-100',    pattern: 'cancelled-pattern', border: '#be123c' }
+  cancelled:{ bg: 'bg-red-100',    pattern: 'cancelled-pattern', border: '#be123c' },
+  'Đã lên lịch': { bg: 'bg-blue-100', pattern: 'maintenance-pattern', border: '#1d4ed8' },
+  'Đang bảo trì': { bg: 'bg-blue-100', pattern: 'maintenance-pattern', border: '#1d4ed8' }
 };
 
 const getStatusStyle = (status) => STATUS_STYLES[status] || STATUS_STYLES.pending;
@@ -41,6 +43,9 @@ const getPeriodSegments = (rentalsByPeriod) => PERIODS.reduce((segments, period,
 }, []);
 
 const buildRentalTitle = (period, rental) => {
+  if (rental.is_maintenance) {
+    return `${period}: Bảo trì\nTrạng thái: ${rental.status}`;
+  }
   const rentalLabel = rental.code || rental.customer_name || 'Da dat';
   const creatorLabel = rental.creator_name || 'Khong ro';
   return `${period}: ${rentalLabel}\nNguoi tao: ${creatorLabel}`;
@@ -146,8 +151,8 @@ const CalendarRowCells = React.memo(({
                     onTouchEnd={handleRentalHoverEnd}
                     onTouchCancel={handleRentalHoverEnd}
                     onContextMenu={preventContextMenu}
-                    onClick={() => { if (!disableForDriver) { handleRentalHoverEnd?.(); openEditModal(rental); } }}
-                    onDoubleClick={() => { if (!disableForDriver) { handleRentalHoverEnd?.(); openEditModal(rental); } }}
+                    onClick={() => { if (!disableForDriver && !rental.is_maintenance) { handleRentalHoverEnd?.(); openEditModal(rental); } }}
+                    onDoubleClick={() => { if (!disableForDriver && !rental.is_maintenance) { handleRentalHoverEnd?.(); openEditModal(rental); } }}
                   >
                     {periods.map(({ period, lineColor, connectsLeft, connectsRight }) => (
                       <span
@@ -209,7 +214,7 @@ const CalendarRow = React.memo(({
   const isDriver = data.isDriver || false;
 
   return (
-    <div className="flex border-b border-slate-100/80 group calendar-row" style={ROW_STYLE}>
+    <div className="flex border-b border-slate-100/80 calendar-row" style={ROW_STYLE}>
       {/* ── Left column: equipment info — renders EVERY time, but it's cheap ── */}
       <div
         onMouseEnter={e => handleHoverStart(eq, e)}
@@ -219,7 +224,7 @@ const CalendarRow = React.memo(({
         onTouchStart={e => handleHoverStart(eq, e)}
         onTouchCancel={e => handleHoverEnd(e)}
         onContextMenu={e => e.preventDefault()}
-        className={`${leftColClass} select-none sticky left-0 z-20 bg-white border-r border-slate-100 flex flex-col justify-center px-2 md:px-4 py-1.5 md:py-2 shadow-[2px_0_10px_-8px_rgba(15,23,42,0.3)] cursor-pointer`}
+        className={`${leftColClass} calendar-equip-col select-none sticky left-0 z-20 bg-white border-r border-slate-100 flex flex-col justify-center px-2 md:px-4 py-1.5 md:py-2 shadow-[2px_0_10px_-8px_rgba(15,23,42,0.3)] cursor-pointer`}
       >
         <span className="font-semibold text-slate-800 truncate text-[11px] md:text-sm lg:text-base" title={eq.name}>{eq.name}</span>
         <div className="mt-0.5 md:mt-1 flex min-w-0 items-center gap-1.5">
@@ -231,12 +236,21 @@ const CalendarRow = React.memo(({
           )}
         </div>
         <div className="flex flex-col gap-0.5 mt-0.5 md:mt-1">
-          <div className="flex items-center gap-1 text-[10px] md:text-xs font-semibold text-slate-500 truncate" title={eq.branch_name || 'Hệ thống'}>
-            <Home size={10} className="text-slate-400 shrink-0" /><span>{eq.branch_name || 'Hệ thống'}</span>
-          </div>
-          {eq.current_branch_id && eq.current_branch_id !== eq.branch_id && (
-            <div className="flex items-center gap-1 text-[10px] md:text-xs font-semibold text-indigo-600 truncate" title={`Đang ở: ${eq.current_branch_name}`}>
-              <Home size={10} className="text-indigo-400 shrink-0" /><span>Đang ở: {eq.current_branch_name}</span>
+          {eq.current_branch_id && eq.current_branch_id !== eq.branch_id ? (
+            <div
+              className="flex items-center gap-1 text-[10px] md:text-xs font-semibold text-indigo-600 truncate"
+              title={`Đang ở cơ sở: ${eq.current_branch_name}`}
+            >
+              <Home size={10} className="text-indigo-500 shrink-0" />
+              <span className="truncate">{eq.current_branch_name || 'Cơ sở khác'}</span>
+            </div>
+          ) : (
+            <div
+              className="flex items-center gap-1 text-[10px] md:text-xs font-semibold text-slate-500 truncate"
+              title={eq.branch_name || 'Hệ thống'}
+            >
+              <Home size={10} className="text-slate-400 shrink-0" />
+              <span className="truncate">{eq.branch_name || 'Hệ thống'}</span>
             </div>
           )}
         </div>

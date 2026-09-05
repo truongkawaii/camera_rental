@@ -279,6 +279,8 @@ CREATE TABLE IF NOT EXISTS equipment_maintenance (
   maintenance_date TIMESTAMPTZ DEFAULT NOW(),
   completed_date TIMESTAMPTZ,
   status VARCHAR(50) DEFAULT 'pending',
+  provider VARCHAR(255),
+  notes TEXT,
   inserted_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   inserted_by INTEGER,

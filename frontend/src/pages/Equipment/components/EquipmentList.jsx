@@ -182,7 +182,7 @@ const EquipmentRow = ({ item, canManage, statsVisibility, onEdit, onDelete, onDu
 
       {/* Tình trạng */}
       <td className={`${td} text-center`}>
-        <ConditionBadge condition={item.condition} />
+        <ConditionBadge condition={item.is_under_maintenance ? 'maintenance' : item.condition} />
       </td>
 
       {/* Hành động */}

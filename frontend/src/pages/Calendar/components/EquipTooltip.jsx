@@ -91,8 +91,12 @@ const EquipTooltip = ({ eq, initialPos }) => {
           </div>
 
           <div className="flex items-center gap-1.5 text-gray-600">
-            <MapPin size={10} className="text-gray-400 shrink-0" />
-            <span className="text-[11px] md:text-xs font-medium text-gray-700 truncate">{eq.branch_name || 'Hệ thống'}</span>
+            <MapPin size={10} className={eq.current_branch_id && eq.current_branch_id !== eq.branch_id ? "text-indigo-500 shrink-0" : "text-gray-400 shrink-0"} />
+            <span className={`text-[11px] md:text-xs font-medium truncate ${eq.current_branch_id && eq.current_branch_id !== eq.branch_id ? 'text-indigo-600 font-semibold' : 'text-gray-700'}`}>
+              {eq.current_branch_id && eq.current_branch_id !== eq.branch_id
+                ? (eq.current_branch_name || 'Cơ sở khác')
+                : (eq.branch_name || 'Hệ thống')}
+            </span>
           </div>
 
           <div className="flex items-center gap-1.5">
