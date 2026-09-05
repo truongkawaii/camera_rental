@@ -852,10 +852,8 @@ const DashboardV1 = () => {
   const isTodayActive = isSingleDay && dateRange.start === todayISO;
   const trendLabel = isSingleDay ? 'so với hôm qua' : 'so với kỳ trước';
 
-  // Driver chỉ thấy đơn được phân công cho mình
-  const driverFilter = (items) => isDriver && user?.id
-    ? (items || []).filter(r => String(r.handover_user_id) === String(user.id))
-    : (items || []);
+  // Driver thấy tất cả đơn tại cơ sở (backend đã lọc theo branch_ids)
+  const driverFilter = (items) => (items || []);
   const driverPickups = driverFilter(today?.pickups);
   const driverReturns = driverFilter(today?.returns);
   const driverLatePickups = driverFilter(today?.latePickups);
