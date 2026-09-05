@@ -327,6 +327,7 @@ function AuthGate() {
           onOpenMenu={() => setMobileMenuOpen(prev => !prev)}
           onCloseMenu={() => setMobileMenuOpen(false)}
           isMenuOpen={mobileMenuOpen}
+          canViewDashboard={isAdmin || isCameraManager || isInvestor || isDriver}
         />
       </div>
     </div>
@@ -360,15 +361,17 @@ function NavLink({ to, icon, label, open, onClick }) {
 }
 
 /* ── Mobile Bottom Navigation ────────────────────────────────────── */
-function MobileBottomNav({ onOpenMenu, onCloseMenu, isMenuOpen }) {
+function MobileBottomNav({ onOpenMenu, onCloseMenu, isMenuOpen, canViewDashboard }) {
   const location = useLocation();
+
+  const overviewPath = canViewDashboard ? '/' : '/performance';
 
   const navItems = [
     {
-      to: '/',
+      to: overviewPath,
       label: 'Tổng quan',
       icon: BarChart3,
-      isActive: location.pathname === '/' && !isMenuOpen,
+      isActive: location.pathname === overviewPath && !isMenuOpen,
     },
     {
       to: '/rentals',
