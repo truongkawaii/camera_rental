@@ -128,6 +128,22 @@ router.get('/', authenticate, requireSaler, async (req, res) => {
       driverCommissionAmount = 0;
     }
 
+    // Tính tổng doanh số (order value) và số đơn của sale trong tháng
+    const orderValueResult = await pool.query(
+      `SELECT
+         COALESCE(SUM(ren.total_price), 0)::numeric AS total_order_value,
+         COUNT(*)::int AS total_orders
+       FROM rentals ren
+       WHERE ren.user_id = $1
+         AND ren.status IN ('completed', 'active')
+         AND ren.is_deleted = false
+         AND ren.inserted_at >= $2::timestamptz
+         AND ren.inserted_at < $3::timestamptz`,
+      [req.user.id, startStr, endStr]
+    );
+    const totalOrderValue = orderValueResult.rows.length > 0 ? Number(orderValueResult.rows[0].total_order_value) : 0;
+    const totalOrders = orderValueResult.rows.length > 0 ? Number(orderValueResult.rows[0].total_orders) : 0;
+
     const netPayable = createdRevenue - commissionAmount - driverCommissionAmount;
 
     return res.json({
@@ -135,6 +151,11 @@ router.get('/', authenticate, requireSaler, async (req, res) => {
       total_payable: netPayable,
       total_transferred: totalTransferred,
       remaining: netPayable - totalTransferred,
+      // 4 ô thống kê thêm
+      total_order_value: totalOrderValue,
+      total_revenue: createdRevenue,
+      commission_amount: commissionAmount,
+      total_orders: totalOrders,
       transfers: await Promise.all(result.rows.map(async (r) => {
         const images = await getEntityImageUrls(pool, 'sale_transfers', r.id).catch(() => []);
         // Trả thẳng UTC ISO string – frontend sẽ dùng new Date() để hiển thị theo giờ địa phương (Việt Nam).

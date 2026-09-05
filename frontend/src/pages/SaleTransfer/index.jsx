@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getSaleTransfers, createSaleTransfer, updateSaleTransfer, deleteSaleTransfer, uploadSaleTransferImage } from '../../api/client';
-import { Wallet, Send, Trash2, Plus, X, ArrowUpCircle, Clock, CheckCircle2, Upload, Eye, Pencil, TrendingUp, TrendingDown } from 'lucide-react';
+import { Wallet, Send, Trash2, Plus, X, ArrowUpCircle, Clock, CheckCircle2, Upload, Eye, Pencil, TrendingUp, TrendingDown, ShoppingBag, Calculator } from 'lucide-react';
 import { useToast, ToastContainer } from '../../components/Toast';
 import ModernMonthPicker from '../../components/ModernMonthPicker';
 import ModernDateTimePicker from '../../components/ModernDateTimePicker';
@@ -13,7 +13,7 @@ const SaleTransfer = () => {
   const [selectedMonth, setSelectedMonth] = useState(
     new Date().toISOString().slice(0, 7)
   );
-  const [summary, setSummary] = useState({ total_payable: 0, total_transferred: 0, remaining: 0 });
+  const [summary, setSummary] = useState({ total_payable: 0, total_transferred: 0, remaining: 0, total_order_value: 0, total_revenue: 0, commission_amount: 0, total_orders: 0 });
   const [transfers, setTransfers] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -42,6 +42,10 @@ const SaleTransfer = () => {
         total_payable: Number(res.data.total_payable || 0),
         total_transferred: Number(res.data.total_transferred || 0),
         remaining: Number(res.data.remaining || 0),
+        total_order_value: Number(res.data.total_order_value || 0),
+        total_revenue: Number(res.data.total_revenue || 0),
+        commission_amount: Number(res.data.commission_amount || 0),
+        total_orders: Number(res.data.total_orders || 0),
       });
     } catch (err) {
       console.error(err);
@@ -248,6 +252,89 @@ const SaleTransfer = () => {
             <div className="sm:w-48 lg:w-56 shrink-0">
               <ModernMonthPicker value={selectedMonth} onChange={setSelectedMonth} className="w-full" />
             </div>
+          </div>
+        </div>
+
+        {/* ═══════ Performance Stat Cards (4 ô như /performance) ═══════ */}
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4 xl:gap-4">
+          {/* Doanh Số Tổng */}
+          <div className="bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-600 rounded-3xl p-3 md:p-4 text-white shadow-xl shadow-blue-100/50 overflow-hidden relative group border border-white/10">
+            <div className="relative z-10 h-full flex flex-col justify-between">
+              <div className="mb-2.5 flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/20 backdrop-blur-md">
+                  <ShoppingBag size={16} />
+                </div>
+                <p className="text-blue-50/90 text-[9px] font-bold uppercase tracking-wide">Doanh Số Tổng</p>
+              </div>
+              <div>
+                <h2 className="text-base md:text-xl font-bold mt-1">
+                  {Math.round(summary.total_order_value).toLocaleString('vi-VN')}
+                  <span className="text-[10px] ml-1 opacity-70">VND</span>
+                </h2>
+                <p className="text-[10px] text-white/60 mt-0.5">Đơn tạo trong tháng</p>
+              </div>
+            </div>
+            <TrendingUp size={80} className="absolute -right-2 -bottom-2 text-white/5 group-hover:scale-110 transition-transform duration-700" />
+          </div>
+
+          {/* Doanh Thu */}
+          <div className="bg-gradient-to-br from-indigo-500 via-indigo-600 to-violet-600 rounded-3xl p-3 md:p-4 text-white shadow-xl shadow-indigo-100/50 overflow-hidden relative group border border-white/10">
+            <div className="relative z-10 h-full flex flex-col justify-between">
+              <div className="mb-2.5 flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/20 backdrop-blur-md">
+                  <CheckCircle2 size={16} />
+                </div>
+                <p className="text-indigo-50/90 text-[9px] font-bold uppercase tracking-wide">Doanh Thu</p>
+              </div>
+              <div>
+                <h2 className="text-base md:text-xl font-bold mt-1">
+                  {Math.round(summary.total_revenue).toLocaleString('vi-VN')}
+                  <span className="text-[10px] ml-1 opacity-70">VND</span>
+                </h2>
+                <p className="text-[10px] text-white/60 mt-0.5">Đơn hoàn thành trong tháng</p>
+              </div>
+            </div>
+            <CheckCircle2 size={80} className="absolute -right-2 -bottom-2 text-white/5 group-hover:scale-110 transition-transform duration-700" />
+          </div>
+
+          {/* Hoa Hồng */}
+          <div className="bg-gradient-to-br from-orange-400 via-orange-500 to-amber-600 rounded-3xl p-3 md:p-4 text-white shadow-xl shadow-orange-100/50 overflow-hidden relative group border border-white/10">
+            <div className="relative z-10 h-full flex flex-col justify-between">
+              <div className="mb-2.5 flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/20 backdrop-blur-md">
+                  <Calculator size={16} />
+                </div>
+                <p className="text-orange-50/90 text-[9px] font-bold uppercase tracking-wide">Hoa Hồng Của Bạn</p>
+              </div>
+              <div>
+                <h2 className="text-base md:text-xl font-bold mt-1">
+                  {Math.round(summary.commission_amount).toLocaleString('vi-VN')}
+                  <span className="text-[10px] ml-1 opacity-70">VND</span>
+                </h2>
+                <p className="text-[10px] text-white/60 mt-0.5">Hoa hồng tháng này</p>
+              </div>
+            </div>
+            <Calculator size={80} className="absolute -right-2 -bottom-2 text-white/5 group-hover:scale-110 transition-transform duration-700" />
+          </div>
+
+          {/* Tổng Đơn */}
+          <div className="bg-gradient-to-br from-emerald-400 via-emerald-500 to-teal-600 rounded-3xl p-3 md:p-4 text-white shadow-xl shadow-emerald-100/50 overflow-hidden relative group border border-white/10">
+            <div className="relative z-10 h-full flex flex-col justify-between">
+              <div className="mb-2.5 flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/20 backdrop-blur-md">
+                  <ShoppingBag size={16} />
+                </div>
+                <p className="text-emerald-50/90 text-[9px] font-bold uppercase tracking-wide">Tổng Đơn</p>
+              </div>
+              <div>
+                <h2 className="text-base md:text-xl font-bold mt-1">
+                  {summary.total_orders}
+                  <span className="text-[10px] ml-1 opacity-70">đơn</span>
+                </h2>
+                <p className="text-[10px] text-white/60 mt-0.5">Đơn tạo trong tháng</p>
+              </div>
+            </div>
+            <ShoppingBag size={80} className="absolute -right-2 -bottom-2 text-white/5 group-hover:scale-110 transition-transform duration-700" />
           </div>
         </div>
 
