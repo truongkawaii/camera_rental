@@ -204,8 +204,9 @@ router.get('/counts', authenticate, async (req, res) => {
       params.push(req.user.id);
       whereClause += ` AND user_id = $${params.length}`;
     } else if (driverOnly) {
-      params.push(req.user.id);
-      whereClause += ` AND handover_user_id = $${params.length}`;
+      // Driver xem tất cả đơn tại cơ sở mình làm việc
+      params.push(branchIds.length > 0 ? branchIds : [-1]);
+      whereClause += ` AND (branch_id = ANY($${params.length}) OR pickup_branch_id = ANY($${params.length}) OR return_branch_id = ANY($${params.length}))`;
     } else if (!isAdmin) {
       params.push(branchIds.length > 0 ? branchIds : [-1]);
       whereClause += ` AND (branch_id = ANY($${params.length}) OR pickup_branch_id = ANY($${params.length}) OR return_branch_id = ANY($${params.length}))`;
@@ -296,8 +297,9 @@ router.get('/', authenticate, async (req, res) => {
     params.push(req.user.id);
     whereClause += ` AND r.user_id = $${params.length}`;
   } else if (driverOnly) {
-    params.push(req.user.id);
-    whereClause += ` AND r.handover_user_id = $${params.length}`;
+    // Driver xem tất cả đơn tại cơ sở mình làm việc
+    params.push(branchIds.length > 0 ? branchIds : [-1]);
+    whereClause += ` AND (r.branch_id = ANY($${params.length}) OR r.pickup_branch_id = ANY($${params.length}) OR r.return_branch_id = ANY($${params.length}))`;
   } else if (!isAdmin) {
     params.push(branchIds.length > 0 ? branchIds : [-1]);
     whereClause += ` AND (r.branch_id = ANY($${params.length}) OR r.pickup_branch_id = ANY($${params.length}) OR r.return_branch_id = ANY($${params.length}))`;
@@ -490,6 +492,11 @@ router.get('/:id', authenticate, async (req, res) => {
     if (isInvestorOnly(req.user)) {
       params.push(req.user.id);
       accessClause += ` AND e.owner_id = $${params.length}`;
+    } else if (isDriverOnly(req.user)) {
+      // Driver chỉ xem đơn tại cơ sở mình làm việc
+      const branchIds = req.user.branch_ids || [];
+      params.push(branchIds.length > 0 ? branchIds : [-1]);
+      accessClause += ` AND (r.branch_id = ANY($${params.length}) OR r.pickup_branch_id = ANY($${params.length}) OR r.return_branch_id = ANY($${params.length}))`;
     }
 
     const result = await pool.query(`

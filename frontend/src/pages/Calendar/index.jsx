@@ -377,12 +377,6 @@ export default function CalendarPage() {
     }
   }, [fSaler, isSaler, user?.id]);
 
-  useEffect(() => {
-    if (isDriver && user?.id && fSaler.includes('ALL')) {
-      setFSaler([String(user.id)]);
-    }
-  }, [fSaler, isDriver, user?.id]);
-
   // --- SCROLL LOGIC ---
   const scrollRef = useRef(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
