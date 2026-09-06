@@ -61,7 +61,7 @@ const EquipmentTransfers = () => {
       const [transfersRes, branchesRes, eqRes, branchStatsRes] = await Promise.all([
         getEquipmentTransfers(params).catch(() => ({ data: { transfers: [] } })),
         getBranches().catch(() => ({ data: [] })),
-        getEquipment ? getEquipment({ limit: 500 }).catch(() => ({ data: { data: [] } })) : Promise.resolve({ data: { data: [] } }),
+        getEquipment ? getEquipment(1, 1000).catch(() => ({ data: { data: [] } })) : Promise.resolve({ data: { data: [] } }),
         getBranchTransferStats().catch(() => ({ data: { branches: [] } }))
       ]);
 
