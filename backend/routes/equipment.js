@@ -94,6 +94,12 @@ router.get('/', authenticate, async (req, res) => {
           WHERE is_deleted = false
             AND status NOT IN ('cancelled', 'completed')
             AND (start_date < $${endIdx} AND end_date > $${startIdx})
+          UNION
+          SELECT ri.equipment_id FROM rental_items ri
+          JOIN rentals r ON r.id = ri.rental_id
+          WHERE ri.is_deleted = false AND r.is_deleted = false
+            AND r.status NOT IN ('cancelled', 'completed')
+            AND (r.start_date < $${endIdx} AND r.end_date > $${startIdx})
         )
       `;
     }
@@ -110,7 +116,13 @@ router.get('/', authenticate, async (req, res) => {
         EXISTS (
           SELECT 1
           FROM rentals r
-          WHERE r.equipment_id = e.id
+          WHERE (
+            r.equipment_id = e.id
+            OR EXISTS (
+              SELECT 1 FROM rental_items ri
+              WHERE ri.rental_id = r.id AND ri.equipment_id = e.id AND ri.is_deleted = false
+            )
+          )
             AND r.is_deleted = false
             AND r.inserted_at <= $${asOfIdx}
             AND r.status != 'cancelled'
@@ -134,6 +146,7 @@ router.get('/', authenticate, async (req, res) => {
           e.id, e.name, e.category, e.brand, e.model, e.price_per_day, e.price_per_session, e.price_per_day_discount, e.discount_day_threshold, e.code,
           e.condition, e.purchase_date, e.inserted_at, e.branch_id, e.owner_id, e.current_branch_id,
           b.name as branch_name,
+          cb.name as current_branch_name,
           owner.full_name as owner_name,
           owner.username as owner_username,
           COALESCE(
@@ -152,12 +165,13 @@ router.get('/', authenticate, async (req, res) => {
               AND em.maintenance_date <= NOW() 
               AND (em.completed_date IS NULL OR em.completed_date >= NOW())
           ) as is_under_maintenance,
-          (SELECT COUNT(*) FROM rentals r WHERE r.equipment_id = e.id AND r.is_deleted = false AND r.status != 'cancelled'${monthFilter}) as rental_count,
-          (SELECT COALESCE(SUM(r.total_price), 0) FROM rentals r WHERE r.equipment_id = e.id AND r.is_deleted = false AND r.status != 'cancelled'${monthFilter}) as total_sales,
-          (SELECT COALESCE(SUM(r.total_price), 0) FROM rentals r WHERE r.equipment_id = e.id AND r.is_deleted = false AND r.status = 'completed'${monthFilter}) as total_revenue,
+          (SELECT COUNT(DISTINCT r.id) FROM rentals r JOIN rental_items ri ON ri.rental_id = r.id AND ri.is_deleted = false WHERE ri.equipment_id = e.id AND r.is_deleted = false AND r.status != 'cancelled'${monthFilter}) as rental_count,
+          (SELECT COALESCE(SUM(ri.item_total), 0) FROM rentals r JOIN rental_items ri ON ri.rental_id = r.id AND ri.is_deleted = false WHERE ri.equipment_id = e.id AND r.is_deleted = false AND r.status != 'cancelled'${monthFilter}) as total_sales,
+          (SELECT COALESCE(SUM(ri.item_total), 0) FROM rentals r JOIN rental_items ri ON ri.rental_id = r.id AND ri.is_deleted = false WHERE ri.equipment_id = e.id AND r.is_deleted = false AND r.status = 'completed'${monthFilter}) as total_revenue,
           (SELECT COUNT(*) FROM rentals r WHERE r.is_deleted = false AND r.status != 'cancelled'${monthFilter}) as total_rentals
         FROM equipment e
         LEFT JOIN branches b ON e.branch_id = b.id
+        LEFT JOIN branches cb ON e.current_branch_id = cb.id
         LEFT JOIN users owner ON e.owner_id = owner.id
         ${baseWhere}
       )
@@ -166,7 +180,7 @@ router.get('/', authenticate, async (req, res) => {
     // Final WHERE for search across all fields (including computed)
     let finalWhere = '';
     if (searchIdx) {
-      finalWhere = `WHERE name ILIKE $${searchIdx} OR code ILIKE $${searchIdx} OR category ILIKE $${searchIdx} OR brand ILIKE $${searchIdx} OR model ILIKE $${searchIdx} OR price_per_day::text ILIKE $${searchIdx} OR total_sales::text ILIKE $${searchIdx} OR total_revenue::text ILIKE $${searchIdx}`;
+      finalWhere = `WHERE name ILIKE $${searchIdx} OR code ILIKE $${searchIdx} OR category ILIKE $${searchIdx} OR brand ILIKE $${searchIdx} OR model ILIKE $${searchIdx} OR price_per_day::text ILIKE $${searchIdx} OR total_sales::text ILIKE $${searchIdx} OR total_revenue::text ILIKE $${searchIdx} OR branch_name ILIKE $${searchIdx} OR current_branch_name ILIKE $${searchIdx}`;
     }
 
     // Total Count
@@ -185,6 +199,7 @@ router.get('/', authenticate, async (req, res) => {
       revenue: 'total_revenue',
       category: 'category',
       branch: 'branch_name',
+      current_branch: 'COALESCE(current_branch_name, branch_name)',
       owner: 'owner_name',
       code: 'code',
       discount_price: 'price_per_day_discount'
@@ -377,9 +392,10 @@ router.get('/public', async (req, res) => {
              ) img),
             '[]'::json
           ) as images,
-          (SELECT COUNT(*)
+          (SELECT COUNT(DISTINCT r.id)
            FROM rentals r
-           WHERE r.equipment_id = e.id
+           JOIN rental_items ri ON ri.rental_id = r.id AND ri.is_deleted = false
+           WHERE ri.equipment_id = e.id
              AND r.is_deleted = false
              AND r.status = 'completed')::integer as rental_count
         FROM equipment e
@@ -680,10 +696,11 @@ router.get('/ranking', authenticate, async (req, res) => {
           LOWER(TRIM(COALESCE(NULLIF(TRIM(e.model), ''), TRIM(e.name)))) AS model_key,
           MAX(TRIM(COALESCE(NULLIF(TRIM(e.model), ''), TRIM(e.name)))) AS model,
           MAX(NULLIF(TRIM(e.brand), '')) AS brand,
-          COUNT(*)::integer AS rental_count,
-          COALESCE(SUM(r.total_price), 0)::numeric AS total_revenue
+          COUNT(DISTINCT r.id)::integer AS rental_count,
+          COALESCE(SUM(ri.item_total), 0)::numeric AS total_revenue
         FROM rentals r
-        JOIN equipment e ON r.equipment_id = e.id AND e.is_deleted = false
+        JOIN rental_items ri ON ri.rental_id = r.id AND ri.is_deleted = false
+        JOIN equipment e ON ri.equipment_id = e.id AND e.is_deleted = false
         WHERE ${rentalStatusFilter}
           ${monthFilter}
         GROUP BY LOWER(TRIM(COALESCE(NULLIF(TRIM(e.model), ''), TRIM(e.name))))

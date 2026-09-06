@@ -738,9 +738,48 @@ export default function CalendarPage() {
       const loadedStartDate = (data.start_date || data.pickup_time || '').split('T')[0] || '';
       const loadedEndDate = (data.end_date || data.return_time || '').split('T')[0] || loadedStartDate;
       const imageList = parseImageList(data.images || data.image_data);
+      const initialItems = Array.isArray(data.items) && data.items.length > 0
+        ? data.items.map(it => ({
+            equipment_id: it.equipment_id || it.id,
+            id: it.equipment_id || it.id,
+            name: it.name,
+            code: it.code,
+            category: it.category,
+            branch_id: it.branch_id,
+            branch_name: it.branch_name,
+            price_per_day: it.applied_day_price ?? it.unit_price,
+            price_per_session: it.unit_price_session,
+            unit_price: it.unit_price,
+            applied_day_price: it.applied_day_price,
+            unit_price_session: it.unit_price_session,
+            discount_day_price: it.discount_day_price,
+            discount_day_threshold_snapshot: it.discount_day_threshold_snapshot,
+            used_discount_day_price: it.used_discount_day_price,
+            subtotal: it.subtotal,
+            discount_share: it.discount_share,
+            item_total: it.item_total,
+            is_primary: it.is_primary
+          }))
+        : (data.equipment_id ? [{
+            equipment_id: data.equipment_id,
+            id: data.equipment_id,
+            name: data.equipment_name,
+            code: data.equipment_code,
+            price_per_day: data.applied_day_price ?? data.unit_price,
+            price_per_session: data.unit_price_session,
+            unit_price: data.unit_price,
+            applied_day_price: data.applied_day_price,
+            unit_price_session: data.unit_price_session,
+            discount_day_price: data.discount_day_price,
+            discount_day_threshold_snapshot: data.discount_day_threshold_snapshot,
+            used_discount_day_price: data.used_discount_day_price,
+            is_primary: true
+          }] : []);
+
       setFormData({
         customer_id: data.customer_id,
-        equipment_id: data.equipment_id,
+        equipment_id: data.equipment_id || initialItems[0]?.equipment_id || '',
+        items: initialItems,
         start_date: loadedStartDate,
         start_period: data.start_period || 'sáng',
         end_date: loadedEndDate,

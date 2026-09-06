@@ -1,5 +1,5 @@
 import React from 'react';
-import { Edit2, Trash2, Package, Building2, UserRound, Copy } from 'lucide-react';
+import { Edit2, Trash2, Package, Building2, UserRound, Copy, ArrowRightLeft } from 'lucide-react';
 import { ConditionBadge } from '../utils';
 import LazyImage from '../../../components/LazyImage';
 import { getFirstImage } from '../../../utils/formatters';
@@ -80,13 +80,21 @@ const EquipmentCard = ({ item, canManage, statsVisibility = 'full', onEdit, onDe
       <div className="mt-4 bg-gray-50/50 p-3 rounded-xl border border-gray-50 text-sm">
         <div className={`${hideSensitiveStats ? 'flex justify-end' : 'grid grid-cols-[minmax(0,1fr)_auto]'} items-start gap-2 mb-3`}>
           {!hideSensitiveStats && (
-            <div className="flex min-h-[2.5rem] items-start gap-1.5 min-w-0">
-              <Building2 size={14} className="text-blue-500" />
-              <span className="text-gray-700 font-medium leading-snug line-clamp-2">
-                {item.branch_name || (
-                  <span className="text-gray-400 italic font-normal">Chưa gán cơ sở</span>
-                )}
-              </span>
+            <div className="flex flex-col gap-1 min-h-[2.5rem] min-w-0">
+              <div className="flex items-start gap-1.5">
+                <Building2 size={14} className="text-blue-500 shrink-0 mt-0.5" />
+                <span className="text-gray-700 font-medium leading-snug line-clamp-2">
+                  <span className="text-slate-400 text-xs">CS gốc:</span> {item.branch_name || (
+                    <span className="text-gray-400 italic font-normal">Chưa gán cơ sở</span>
+                  )}
+                </span>
+              </div>
+              {item.current_branch_id && item.current_branch_id !== item.branch_id && (
+                <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-50 border border-amber-200 text-amber-900 text-[11px] font-semibold">
+                  <ArrowRightLeft size={11} className="text-amber-600 shrink-0" />
+                  <span>Đang ở: {item.current_branch_name} (Đã chuyển)</span>
+                </div>
+              )}
             </div>
           )}
           {!hideMetrics && (

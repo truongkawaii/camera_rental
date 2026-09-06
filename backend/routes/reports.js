@@ -158,8 +158,8 @@ router.get('/revenue-by-branch', authenticate, async (req, res) => {
 // Query params: ?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
 router.get('/investor-revenue', authenticate, async (req, res) => {
   try {
-    if (hasRole(req.user, 'driver') && !hasRole(req.user, 'admin', 'camera_manager', 'investor')) {
-      return res.status(403).json({ error: 'Bạn không có quyền truy cập báo cáo nhà đầu tư.' });
+    if (!hasRole(req.user, 'admin', 'investor')) {
+      return res.status(403).json({ error: 'Chỉ Admin và Nhà đầu tư mới có quyền truy cập báo cáo nhà đầu tư.' });
     }
     const { startDate, endDate } = req.query;
 
@@ -188,34 +188,63 @@ router.get('/investor-revenue', authenticate, async (req, res) => {
         WHERE is_deleted = false
         GROUP BY rental_id
       ),
-      investor_rental_stats AS (
+      investor_order_lines AS (
         SELECT
-          COALESCE(owner.id, 0) as investor_id,
-          COALESCE(owner.full_name, 'Chưa có nhà đầu tư') as investor_name,
-          COALESCE(owner.username, '') as investor_username,
-          COALESCE(owner.commission_rate, 0) as investor_commission_rate,
-          COUNT(*) FILTER (WHERE r.inserted_at >= $1 AND r.inserted_at <= $2)::int as total_orders,
-          COALESCE(SUM(r.total_price) FILTER (WHERE r.inserted_at >= $1 AND r.inserted_at <= $2 AND r.status != 'cancelled'), 0)::numeric as total_order_value,
-          COUNT(*) FILTER (WHERE r.returned_at >= $1 AND r.returned_at <= $2 AND r.status = 'completed')::int as completed_orders,
-          COALESCE(SUM(r.total_price) FILTER (WHERE r.returned_at >= $1 AND r.returned_at <= $2 AND r.status = 'completed'), 0)::numeric as total_revenue,
-          COALESCE(SUM(
-            COALESCE(lt.saler_commission, r.total_price * COALESCE(staff.commission_rate, 0))
-          ) FILTER (WHERE r.returned_at >= $1 AND r.returned_at <= $2 AND r.status = 'completed'), 0)::numeric as commission_amount,
-          COALESCE(SUM(
-            COALESCE(lt.driver_commission, 0)
-          ) FILTER (WHERE r.returned_at >= $1 AND r.returned_at <= $2 AND r.status = 'completed'), 0)::numeric as driver_commission_amount
+          r.id as rental_id,
+          r.code,
+          r.order_number,
+          r.status,
+          r.customer_id,
+          r.user_id,
+          r.manager_id,
+          r.branch_id,
+          r.inserted_at,
+          r.returned_at,
+          r.total_price as rental_total_price,
+          owner.id as investor_id,
+          owner.full_name as investor_name,
+          owner.username as investor_username,
+          owner.commission_rate as investor_commission_rate,
+          string_agg(e.name, ', ' ORDER BY ri.is_primary DESC, ri.id ASC) as equipment_name,
+          COUNT(ri.id)::int as item_count,
+          SUM(ri.subtotal)::numeric as investor_subtotal,
+          SUM(ri.item_total)::numeric as investor_item_total,
+          CASE 
+            WHEN r.total_price > 0 THEN (SUM(ri.item_total) / r.total_price)
+            ELSE (1.0 / GREATEST((SELECT COUNT(*) FROM rental_items ri_cnt WHERE ri_cnt.rental_id = r.id AND ri_cnt.is_deleted = false), 1))
+          END as investor_share_ratio
         FROM rentals r
-        JOIN equipment e ON e.id = r.equipment_id AND e.is_deleted = false
+        JOIN rental_items ri ON ri.rental_id = r.id AND ri.is_deleted = false
+        JOIN equipment e ON e.id = ri.equipment_id AND e.is_deleted = false
         LEFT JOIN investor_users owner ON owner.id = e.owner_id
-        LEFT JOIN users staff ON staff.id = r.user_id AND staff.is_deleted = false
-        LEFT JOIN ledger_totals lt ON lt.rental_id = r.id
         WHERE r.is_deleted = false
           AND (
             (r.inserted_at >= $1 AND r.inserted_at <= $2)
             OR
             (r.returned_at >= $1 AND r.returned_at <= $2 AND r.status = 'completed')
           )
-        GROUP BY owner.id, owner.full_name, owner.username, owner.commission_rate
+        GROUP BY r.id, r.code, r.order_number, r.status, r.customer_id, r.user_id, r.manager_id, r.branch_id, r.inserted_at, r.returned_at, r.total_price, owner.id, owner.full_name, owner.username, owner.commission_rate
+      ),
+      investor_rental_stats AS (
+        SELECT
+          COALESCE(iol.investor_id, 0) as investor_id,
+          COALESCE(iol.investor_name, 'Chưa có nhà đầu tư') as investor_name,
+          COALESCE(iol.investor_username, '') as investor_username,
+          COALESCE(iol.investor_commission_rate, 0) as investor_commission_rate,
+          COUNT(*) FILTER (WHERE iol.inserted_at >= $1 AND iol.inserted_at <= $2)::int as total_orders,
+          COALESCE(SUM(iol.investor_item_total) FILTER (WHERE iol.inserted_at >= $1 AND iol.inserted_at <= $2 AND iol.status != 'cancelled'), 0)::numeric as total_order_value,
+          COUNT(*) FILTER (WHERE iol.returned_at >= $1 AND iol.returned_at <= $2 AND iol.status = 'completed')::int as completed_orders,
+          COALESCE(SUM(iol.investor_item_total) FILTER (WHERE iol.returned_at >= $1 AND iol.returned_at <= $2 AND iol.status = 'completed'), 0)::numeric as total_revenue,
+          COALESCE(SUM(
+            ROUND(COALESCE(lt.saler_commission, iol.rental_total_price * COALESCE(staff.commission_rate, 0)) * iol.investor_share_ratio, 2)
+          ) FILTER (WHERE iol.returned_at >= $1 AND iol.returned_at <= $2 AND iol.status = 'completed'), 0)::numeric as commission_amount,
+          COALESCE(SUM(
+            ROUND(COALESCE(lt.driver_commission, 0) * iol.investor_share_ratio, 2)
+          ) FILTER (WHERE iol.returned_at >= $1 AND iol.returned_at <= $2 AND iol.status = 'completed'), 0)::numeric as driver_commission_amount
+        FROM investor_order_lines iol
+        LEFT JOIN users staff ON staff.id = iol.user_id AND staff.is_deleted = false
+        LEFT JOIN ledger_totals lt ON lt.rental_id = iol.rental_id
+        GROUP BY iol.investor_id, iol.investor_name, iol.investor_username, iol.investor_commission_rate
       ),
       investor_maintenance_stats AS (
         SELECT
@@ -234,51 +263,43 @@ router.get('/investor-revenue', authenticate, async (req, res) => {
       ),
       investor_order_details AS (
         SELECT
-          COALESCE(owner.id, 0) as investor_id,
+          COALESCE(iol.investor_id, 0) as investor_id,
           json_agg(
             json_build_object(
-              'id', r.id,
-              'code', COALESCE(r.code, 'OD' || LPAD(COALESCE(r.order_number, r.id)::text, 7, '0')),
-              'status', r.status,
+              'id', iol.rental_id,
+              'code', COALESCE(iol.code, 'OD' || LPAD(COALESCE(iol.order_number, iol.rental_id)::text, 7, '0')),
+              'status', iol.status,
               'customer_name', c.name,
-              'equipment_name', e.name,
+              'equipment_name', iol.equipment_name,
               'employee_id', u.id,
               'employee_name', u.full_name,
               'employee_username', u.username,
               'manager_id', manager.id,
               'manager_name', manager.full_name,
               'manager_username', manager.username,
-              'inserted_at', r.inserted_at,
-              'returned_at', r.returned_at,
-              'total_order_value', CASE WHEN r.inserted_at >= $1 AND r.inserted_at <= $2 AND r.status != 'cancelled' THEN r.total_price ELSE 0 END,
-              'total_revenue', CASE WHEN r.returned_at >= $1 AND r.returned_at <= $2 AND r.status = 'completed' THEN r.total_price ELSE 0 END,
+              'inserted_at', iol.inserted_at,
+              'returned_at', iol.returned_at,
+              'total_order_value', CASE WHEN iol.inserted_at >= $1 AND iol.inserted_at <= $2 AND iol.status != 'cancelled' THEN iol.investor_item_total ELSE 0 END,
+              'total_revenue', CASE WHEN iol.returned_at >= $1 AND iol.returned_at <= $2 AND iol.status = 'completed' THEN iol.investor_item_total ELSE 0 END,
               'commission_rate', COALESCE(u.commission_rate, 0),
-              'commission_amount', CASE WHEN r.returned_at >= $1 AND r.returned_at <= $2 AND r.status = 'completed' THEN
-                COALESCE(lt2.saler_commission, r.total_price * COALESCE(u.commission_rate, 0))
+              'commission_amount', CASE WHEN iol.returned_at >= $1 AND iol.returned_at <= $2 AND iol.status = 'completed' THEN
+                ROUND(COALESCE(lt2.saler_commission, iol.rental_total_price * COALESCE(u.commission_rate, 0)) * iol.investor_share_ratio, 2)
               ELSE 0 END,
-              'driver_commission_amount', CASE WHEN r.returned_at >= $1 AND r.returned_at <= $2 AND r.status = 'completed' THEN
-                COALESCE(lt2.driver_commission, 0)
+              'driver_commission_amount', CASE WHEN iol.returned_at >= $1 AND iol.returned_at <= $2 AND iol.status = 'completed' THEN
+                ROUND(COALESCE(lt2.driver_commission, 0) * iol.investor_share_ratio, 2)
               ELSE 0 END,
-              'branch_id', r.branch_id,
+              'branch_id', iol.branch_id,
               'branch_name', COALESCE(b.name, 'Chưa có cơ sở')
             )
-            ORDER BY COALESCE(r.returned_at, r.inserted_at) DESC, r.id DESC
+            ORDER BY COALESCE(iol.returned_at, iol.inserted_at) DESC, iol.rental_id DESC
           ) as orders
-        FROM rentals r
-        JOIN equipment e ON e.id = r.equipment_id AND e.is_deleted = false
-        LEFT JOIN investor_users owner ON owner.id = e.owner_id
-        LEFT JOIN customers c ON c.id = r.customer_id
-        LEFT JOIN branches b ON b.id = r.branch_id
-        LEFT JOIN users u ON u.id = r.user_id
-        LEFT JOIN users manager ON manager.id = r.manager_id
-        LEFT JOIN ledger_totals lt2 ON lt2.rental_id = r.id
-        WHERE r.is_deleted = false
-          AND (
-            (r.inserted_at >= $1 AND r.inserted_at <= $2)
-            OR
-            (r.returned_at >= $1 AND r.returned_at <= $2 AND r.status = 'completed')
-          )
-        GROUP BY owner.id
+        FROM investor_order_lines iol
+        LEFT JOIN customers c ON c.id = iol.customer_id
+        LEFT JOIN branches b ON b.id = iol.branch_id
+        LEFT JOIN users u ON u.id = iol.user_id
+        LEFT JOIN users manager ON manager.id = iol.manager_id
+        LEFT JOIN ledger_totals lt2 ON lt2.rental_id = iol.rental_id
+        GROUP BY iol.investor_id
       ),
       investor_ads_costs AS (
         SELECT

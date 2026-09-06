@@ -300,5 +300,6 @@ export const rejectTransfer = (id, reason) => api.put(`/equipment-transfers/${id
 export const completeTransfer = (id) => api.put(`/equipment-transfers/${id}/complete`);
 export const cancelTransfer = (id) => api.put(`/equipment-transfers/${id}/cancel`);
 export const deleteEquipmentTransfer = (id) => api.delete(`/equipment-transfers/${id}`);
+export const getBranchTransferStats = () => api.get('/equipment-transfers/branch-stats');
 
 export default api;

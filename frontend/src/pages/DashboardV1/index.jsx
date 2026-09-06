@@ -7,7 +7,7 @@ import {
   Search, ChevronDown, Edit2,
   ChevronRight, AlertTriangle, Package, ArrowDownToLine, ArrowUpFromLine,
   Camera, TrendingUp, TrendingDown, ChevronLeft, DollarSign, FileText,
-  MapPin, Calendar, Home, ArrowUpDown
+  MapPin, Calendar, Home, ArrowUpDown, Truck
 } from 'lucide-react';
 import RentalModal from '../Rentals/components/RentalModal';
 import { useToast, ToastContainer } from '../../components/Toast';
@@ -141,7 +141,7 @@ const STATUS_MAP = {
 };
 
 const EMPTY_FORM = {
-  customer_id: '', equipment_id: '',
+  customer_id: '', equipment_id: '', items: [],
   start_date: '', start_period: 'sáng',
   end_date: '', end_period: 'chiều',
   status: 'pending', notes: '', deposit_amount: 0, accessories: [],
@@ -226,7 +226,33 @@ const ActionRow = ({ rental, type = 'pickup', onClick }) => {
             <span className="text-[9px] font-semibold bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded uppercase tracking-tighter">TEST</span>
           )}
         </div>
-        <p className="text-[11.5px] text-slate-400 truncate mt-0.5">{rental.equipment_name}</p>
+        {Array.isArray(rental.items) && rental.items.length > 1 ? (
+          <div className="mt-1 space-y-1">
+            {rental.items.map((it, idx) => (
+              <div key={idx} className="flex items-center gap-1.5 text-[11.5px] text-slate-700 font-medium">
+                <span className="text-[9px] font-bold text-orange-600 bg-orange-50 border border-orange-200/60 px-1 py-0.2 rounded uppercase shrink-0">
+                  #{it.code}
+                </span>
+                <span className="truncate">{it.name}</span>
+                {it.is_primary && (
+                  <span className="text-[8px] font-semibold text-amber-600 bg-amber-50 px-1 rounded border border-amber-200/50 shrink-0">
+                    Chính
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+            <p className="text-[11.5px] text-slate-500 font-medium truncate">{rental.equipment_name}</p>
+          </div>
+        )}
+        {rental.handover_user_name && (
+          <div className="flex items-center gap-1 text-[10.5px] text-blue-600 font-semibold mt-0.5">
+            <Truck size={10} className="text-blue-500 flex-shrink-0" />
+            <span className="truncate">Giao nhận: {rental.handover_user_name}</span>
+          </div>
+        )}
         <div className="flex flex-col gap-0.5 mt-1">
           <div className="flex items-center gap-1 text-[10.5px] text-indigo-500 font-semibold">
             <Home size={10} className="text-indigo-400 flex-shrink-0" />
@@ -272,7 +298,33 @@ const OverdueRow = ({ rental, onClick, overdueType = 'return' }) => {
           <p className="text-[13.5px] font-semibold text-slate-800 truncate group-hover:text-red-600 transition-colors">{rental.customer_name}</p>
           <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap">({rental.code || `#OD${String(rental.order_number || rental.id).padStart(7, '0')}`})</span>
         </div>
-        <p className="text-[11.5px] text-slate-400 truncate mt-0.5">{rental.equipment_name}</p>
+        {Array.isArray(rental.items) && rental.items.length > 1 ? (
+          <div className="mt-1 space-y-1">
+            {rental.items.map((it, idx) => (
+              <div key={idx} className="flex items-center gap-1.5 text-[11.5px] text-slate-700 font-medium">
+                <span className="text-[9px] font-bold text-orange-600 bg-orange-50 border border-orange-200/60 px-1 py-0.2 rounded uppercase shrink-0">
+                  #{it.code}
+                </span>
+                <span className="truncate">{it.name}</span>
+                {it.is_primary && (
+                  <span className="text-[8px] font-semibold text-amber-600 bg-amber-50 px-1 rounded border border-amber-200/50 shrink-0">
+                    Chính
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+            <p className="text-[11.5px] text-slate-500 font-medium truncate">{rental.equipment_name}</p>
+          </div>
+        )}
+        {rental.handover_user_name && (
+          <div className="flex items-center gap-1 text-[10.5px] text-blue-600 font-semibold mt-0.5">
+            <Truck size={10} className="text-blue-500 flex-shrink-0" />
+            <span className="truncate">Giao nhận: {rental.handover_user_name}</span>
+          </div>
+        )}
         <div className="flex flex-col gap-0.5 mt-1">
           <div className="flex items-center gap-1 text-[10.5px] text-indigo-500 font-semibold">
             <Home size={10} className="text-indigo-400 flex-shrink-0" />
@@ -332,14 +384,44 @@ const RentalMobileCard = ({ r, navigate, onEdit }) => {
         <div className="flex-1 min-w-0">
           <p className="text-[14.5px] font-semibold text-slate-900 truncate leading-none mb-1">{r.customer_name}</p>
           {r.customer_phone && <p className="text-[12px] text-slate-400 truncate mb-1">{r.customer_phone}</p>}
-          <p className="text-[12px] text-slate-500 truncate">{r.equipment_name}</p>
-          <div className="mt-1">
-            <span className="text-[11px] text-slate-400 truncate uppercase tracking-tighter block mb-0.5">{r.equipment_code}</span>
-            <div className="flex items-center gap-1 text-[11px] text-indigo-500 font-semibold">
-              <Home size={10} className="text-indigo-400 flex-shrink-0" />
-              <span className="truncate">{r.original_branch_name || 'Hệ thống'}</span>
+          {Array.isArray(r.items) && r.items.length > 1 ? (
+            <div className="mt-1 space-y-1.5">
+              {r.items.map((it, idx) => (
+                <div key={idx} className="flex items-start gap-1.5">
+                  <span className="text-[9.5px] font-bold text-orange-600 bg-orange-50 border border-orange-200/60 px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 mt-0.5">
+                    #{it.code}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1">
+                      <span className="text-[12px] font-semibold text-slate-800 truncate block leading-tight">{it.name}</span>
+                      {it.is_primary && (
+                        <span className="text-[8.5px] font-semibold text-amber-600 bg-amber-50 px-1 rounded border border-amber-200/60 shrink-0">
+                          Chính
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 text-[10px] text-indigo-500 font-medium">
+                      <Home size={9} className="text-indigo-400 flex-shrink-0" />
+                      <span className="truncate">{it.branch_name || r.original_branch_name || 'Hệ thống'}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
-          </div>
+          ) : (
+            <div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <p className="text-[12px] text-slate-700 font-semibold truncate">{r.equipment_name}</p>
+              </div>
+              <div className="mt-1">
+                <span className="text-[11px] text-slate-400 truncate uppercase tracking-tighter block mb-0.5">{r.equipment_code}</span>
+                <div className="flex items-center gap-1 text-[11px] text-indigo-500 font-semibold">
+                  <Home size={10} className="text-indigo-400 flex-shrink-0" />
+                  <span className="truncate">{r.original_branch_name || 'Hệ thống'}</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -368,6 +450,14 @@ const RentalMobileCard = ({ r, navigate, onEdit }) => {
             <span className="text-[11.5px] font-medium">Nơi trả</span>
           </div>
           <span className="text-[12px] font-semibold text-emerald-600">{r.return_branch_name || r.pickup_branch_name || '—'}</span>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-slate-400">
+            <Truck size={13} className="text-blue-500" />
+            <span className="text-[11.5px] font-medium">Giao nhận máy</span>
+          </div>
+          <span className="text-[12px] font-semibold text-blue-600">{r.handover_user_name || 'Chưa chỉ định'}</span>
         </div>
 
         <div className="flex items-center justify-between mt-1 pt-1">
@@ -646,9 +736,48 @@ const DashboardV1 = () => {
     setImagesDirty(false);
     const customer = customers.find((c) => String(c.id) === String(item.customer_id));
     setEditCustomerData(toEditableCustomer(customer || item));
+    const initialItems = Array.isArray(item.items) && item.items.length > 0
+      ? item.items.map(it => ({
+          equipment_id: it.equipment_id || it.id,
+          id: it.equipment_id || it.id,
+          name: it.name,
+          code: it.code,
+          category: it.category,
+          branch_id: it.branch_id,
+          branch_name: it.branch_name,
+          price_per_day: it.applied_day_price ?? it.unit_price,
+          price_per_session: it.unit_price_session,
+          unit_price: it.unit_price,
+          applied_day_price: it.applied_day_price,
+          unit_price_session: it.unit_price_session,
+          discount_day_price: it.discount_day_price,
+          discount_day_threshold_snapshot: it.discount_day_threshold_snapshot,
+          used_discount_day_price: it.used_discount_day_price,
+          subtotal: it.subtotal,
+          discount_share: it.discount_share,
+          item_total: it.item_total,
+          is_primary: it.is_primary
+        }))
+      : (item.equipment_id ? [{
+          equipment_id: item.equipment_id,
+          id: item.equipment_id,
+          name: item.equipment_name,
+          code: item.equipment_code,
+          price_per_day: item.applied_day_price ?? item.unit_price,
+          price_per_session: item.unit_price_session,
+          unit_price: item.unit_price,
+          applied_day_price: item.applied_day_price,
+          unit_price_session: item.unit_price_session,
+          discount_day_price: item.discount_day_price,
+          discount_day_threshold_snapshot: item.discount_day_threshold_snapshot,
+          used_discount_day_price: item.used_discount_day_price,
+          is_primary: true
+        }] : []);
+
     setFormData({
       customer_id: item.customer_id,
-      equipment_id: item.equipment_id,
+      equipment_id: item.equipment_id || initialItems[0]?.equipment_id || '',
+      items: initialItems,
       start_date: item.start_date?.split('T')[0] || '',
       start_period: item.start_period || 'sáng',
       end_date: item.end_date?.split('T')[0] || '',
@@ -1112,14 +1241,44 @@ const DashboardV1 = () => {
                                 />
                               </div>
                               <div className="min-w-0">
-                                <p className="font-semibold text-slate-800 text-[13.5px] truncate">{r.equipment_name}</p>
-                                <div className="mt-1">
-                                  <span className="text-[11px] text-slate-400 truncate uppercase tracking-tighter block mb-0.5">{r.equipment_code}</span>
-                                  <div className="flex items-center gap-1 text-[11px] text-indigo-500 font-semibold">
-                                    <Home size={10} className="text-indigo-400 flex-shrink-0" />
-                                    <span className="truncate">{r.original_branch_name || 'Hệ thống'}</span>
+                                {Array.isArray(r.items) && r.items.length > 1 ? (
+                                  <div className="space-y-1.5">
+                                    {r.items.map((it, idx) => (
+                                      <div key={idx} className="flex items-start gap-1.5">
+                                        <span className="text-[9px] font-bold text-orange-600 bg-orange-50 border border-orange-200/60 px-1 py-0.5 rounded uppercase shrink-0 mt-0.5">
+                                          #{it.code}
+                                        </span>
+                                        <div className="min-w-0">
+                                          <div className="flex items-center gap-1">
+                                            <p className="font-semibold text-slate-800 text-[13px] leading-tight break-words line-clamp-2" title={it.name}>{it.name}</p>
+                                            {it.is_primary && (
+                                              <span className="text-[8.5px] font-semibold text-amber-600 bg-amber-50 px-1 rounded border border-amber-200/60 shrink-0">
+                                                Chính
+                                              </span>
+                                            )}
+                                          </div>
+                                          <div className="flex items-center gap-1 text-[10.5px] text-indigo-500 font-semibold">
+                                            <Home size={9} className="text-indigo-400 flex-shrink-0" />
+                                            <span className="truncate">{it.branch_name || r.original_branch_name || 'Hệ thống'}</span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))}
                                   </div>
-                                </div>
+                                ) : (
+                                  <div>
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <p className="font-semibold text-slate-800 text-[13.5px] truncate">{r.equipment_name}</p>
+                                    </div>
+                                    <div className="mt-1">
+                                      <span className="text-[11px] text-slate-400 truncate uppercase tracking-tighter block mb-0.5">{r.equipment_code}</span>
+                                      <div className="flex items-center gap-1 text-[11px] text-indigo-500 font-semibold">
+                                        <Home size={10} className="text-indigo-400 flex-shrink-0" />
+                                        <span className="truncate">{r.original_branch_name || 'Hệ thống'}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </td>
@@ -1130,6 +1289,18 @@ const DashboardV1 = () => {
                           <td className="px-5 py-4 text-[13px] font-semibold text-slate-600">
                             <div>Nhận: {r.pickup_branch_name || '—'}</div>
                             <div className="text-[13px] text-emerald-600 mt-1">Trả: {r.return_branch_name || r.pickup_branch_name || '—'}</div>
+                            {r.handover_user_name ? (
+                              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-blue-600 bg-blue-50/80 border border-blue-100 rounded-md px-2 py-0.5 mt-1.5 w-fit">
+                                <Truck size={11} className="text-blue-500 shrink-0" />
+                                <span className="truncate max-w-[140px]" title={`Giao nhận máy: ${r.handover_user_name}`}>
+                                  Giao nhận: {r.handover_user_name}
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="text-[10.5px] font-normal text-slate-400 italic mt-1">
+                                Chưa gán giao nhận
+                              </div>
+                            )}
                           </td>
                           <td className="px-5 py-4 text-[15px] font-semibold text-slate-900 whitespace-nowrap">{fmtVND(r.total_price)}</td>
                           <td className="px-5 py-4">
@@ -1243,6 +1414,7 @@ const DashboardV1 = () => {
         isSaler={isSaler}
         isDriver={isDriver}
         isFetchingImages={false}
+        currentUserId={user?.id}
         toast={toast}
       />
 

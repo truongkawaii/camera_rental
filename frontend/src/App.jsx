@@ -22,6 +22,7 @@ import SaleTransfer from './pages/SaleTransfer';
 import CommissionConfigs from './pages/CommissionConfigs';
 import CollaboratorHierarchy from './pages/CollaboratorHierarchy';
 import Login from './pages/Login';
+import PWAInstallButton from './components/PWAInstallButton';
 import './index.css';
 
 /* ── Auth Gate ──────────────────────────────────────────────────── */
@@ -219,9 +220,9 @@ function AuthGate() {
             },
             {
               title: 'Nhà đầu tư',
-              visible: !isDriver,
+              visible: isAdmin || isInvestor,
               items: [
-                { to: '/investors', icon: <PieChart size={18} />, label: 'Báo Cáo Nhà Đầu Tư', visible: !isDriver },
+                { to: '/investors', icon: <PieChart size={18} />, label: 'Báo Cáo Nhà Đầu Tư', visible: isAdmin || isInvestor },
               ]
             },
           ].filter(g => g.visible !== false).map((group, gIdx) => {
@@ -263,12 +264,17 @@ function AuthGate() {
           })}
         </nav>
 
-        <div className="p-4 border-t border-gray-700">
+        {/* PWA Install Button */}
+        <div className="border-t border-gray-700/60 pt-1 bg-gray-900/40">
+          <PWAInstallButton sidebarOpen={sidebarOpen} mobileMenuOpen={mobileMenuOpen} />
+        </div>
+
+        <div className="p-3 border-t border-gray-700">
           <button
             onClick={logout}
-            className="w-full flex items-center gap-3 px-4 py-2 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg"
+            className="w-full flex items-center gap-3 px-3 py-2 text-gray-400 hover:text-white hover:bg-gray-800/80 rounded-xl transition-colors text-sm font-medium"
           >
-            <LogOut size={20} className="shrink-0" />
+            <LogOut size={18} className="shrink-0 text-gray-400 group-hover:text-white" />
             {(sidebarOpen || mobileMenuOpen) && <span>Đăng Xuất</span>}
           </button>
         </div>
@@ -315,7 +321,7 @@ function AuthGate() {
             <Route path="/commission-configs" element={isAdmin ? <CommissionConfigs key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/collaborators" element={isAdmin ? <CollaboratorHierarchy key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/performance" element={<Performance key={activeRole} />} />
-            <Route path="/investors" element={!isDriver ? <Investors key={activeRole} /> : <Navigate to="/rentals" replace />} />
+            <Route path="/investors" element={(isAdmin || isInvestor) ? <Investors key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/activity"  element={isAdmin ? <ActivityLog key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="*"          element={<Navigate to={(isAdmin || isCameraManager || isInvestor || isDriver) ? "/" : "/rentals"} replace />} />
           </Routes>

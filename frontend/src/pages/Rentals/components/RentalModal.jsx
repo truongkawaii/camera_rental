@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, Calendar as CalendarIcon, Package, User, Plus, AlertTriangle, Upload, ImageIcon, Image as ImageIcon2, ChevronRight, CheckCircle2, CircleDollarSign, Tag, Percent, MapPin, Phone, Edit2, Home, ShieldBan } from 'lucide-react';
+import { X, Calendar as CalendarIcon, Package, User, Plus, AlertTriangle, Upload, ImageIcon, Image as ImageIcon2, ChevronRight, CheckCircle2, CircleDollarSign, Tag, Percent, MapPin, Phone, Edit2, Home, ShieldBan, Trash2, Star } from 'lucide-react';
 import CustomSelect from '../../../components/CustomSelect';
 import ModernDatePicker from '../../../components/ModernDatePicker';
 import ModernDateTimePicker from '../../../components/ModernDateTimePicker';
@@ -177,8 +177,6 @@ const RentalModal = ({
     return baseCreatorUsers;
   }, [users, creatorUserId, baseCreatorUsers]);
 
-  if (!showModal) return null;
-
   const todayDate = new Date().toISOString().split('T')[0];
   const nowDateTime = new Date().toLocaleString('sv').replace(' ', 'T').slice(0, 16); // Local ISO format
   const selectedCreator = creatorUsers.find(u => String(u.id) === String(creatorUserId));
@@ -204,48 +202,165 @@ const RentalModal = ({
     return Number.isFinite(numberValue) ? numberValue : null;
   };
 
-  const calculateGrandTotalForPreview = () => {
-    const selectedEq = (equipment || []).find(e => e.id === formData.equipment_id);
-    const { fullDays, sessions } = calculateTotalDays();
+  const currentItems = React.useMemo(() => {
+    if (Array.isArray(formData.items) && formData.items.length > 0) {
+      return formData.items;
+    }
+    if (formData.equipment_id) {
+      const eq = (equipment || []).find(e => String(e.id) === String(formData.equipment_id));
+      return [{
+        equipment_id: formData.equipment_id,
+        id: formData.equipment_id,
+        name: eq?.name || 'Thiết bị',
+        code: eq?.code || '',
+        category: eq?.category || 'Camera',
+        branch_id: eq?.branch_id || formData.branch_id,
+        branch_name: eq?.branch_name,
+        price_per_day: eq?.price_per_day,
+        price_per_session: eq?.price_per_session,
+        price_per_day_discount: eq?.price_per_day_discount,
+        discount_day_threshold: eq?.discount_day_threshold,
+        unit_price: eq?.price_per_day,
+        unit_price_session: eq?.price_per_session,
+        is_primary: true
+      }];
+    }
+    return [];
+  }, [formData.items, formData.equipment_id, equipment, formData.branch_id]);
 
-    let pricingDays = fullDays;
-    let pricingSessions = sessions;
+  const computeItemPricing = (item, pricingDays, pricingSessions) => {
+    const eq = (equipment || []).find(e => String(e.id) === String(item.equipment_id || item.id));
+    const isEditingThisEq = editingItem && (
+      String(editingItem.equipment_id) === String(item.equipment_id || item.id) ||
+      (Array.isArray(editingItem.items) && editingItem.items.some(it => String(it.equipment_id) === String(item.equipment_id || item.id)))
+    );
 
-    const isEditingSameEquipment = editingItem && String(editingItem.equipment_id) === String(formData.equipment_id);
-    const savedDayPrice = getNumberOrNull(formData.unit_price) ?? getNumberOrNull(editingItem?.unit_price);
-    const savedAppliedDayPrice = getNumberOrNull(formData.applied_day_price) ?? getNumberOrNull(editingItem?.applied_day_price);
-    const savedSessionPrice = getNumberOrNull(formData.unit_price_session) ?? getNumberOrNull(editingItem?.unit_price_session);
-    const savedDiscountDayPrice = getNumberOrNull(formData.discount_day_price) ?? getNumberOrNull(editingItem?.discount_day_price);
-    const savedDiscountThreshold = getNumberOrNull(formData.discount_day_threshold_snapshot) ?? getNumberOrNull(editingItem?.discount_day_threshold_snapshot);
-    const usedSavedDiscountDayPrice = Boolean(formData.used_discount_day_price ?? editingItem?.used_discount_day_price);
+    const savedDayPrice = getNumberOrNull(item.unit_price) ?? (isEditingThisEq ? getNumberOrNull(editingItem?.unit_price) : null);
+    const savedAppliedDayPrice = getNumberOrNull(item.applied_day_price) ?? (isEditingThisEq ? getNumberOrNull(editingItem?.applied_day_price) : null);
+    const savedSessionPrice = getNumberOrNull(item.unit_price_session) ?? (isEditingThisEq ? getNumberOrNull(editingItem?.unit_price_session) : null);
+    const savedDiscountDayPrice = getNumberOrNull(item.discount_day_price) ?? (isEditingThisEq ? getNumberOrNull(editingItem?.discount_day_price) : null);
+    const savedDiscountThreshold = getNumberOrNull(item.discount_day_threshold_snapshot) ?? (isEditingThisEq ? getNumberOrNull(editingItem?.discount_day_threshold_snapshot) : null);
+    const usedSavedDiscountDayPrice = Boolean(item.used_discount_day_price ?? (isEditingThisEq ? editingItem?.used_discount_day_price : false));
 
-    const threshold = selectedEq?.discount_day_threshold ? Number(selectedEq.discount_day_threshold) : null;
-    const discountDayPrice = selectedEq?.price_per_day_discount ? Number(selectedEq.price_per_day_discount) : null;
+    const threshold = eq?.discount_day_threshold ? Number(eq.discount_day_threshold) : (item.discount_day_threshold ? Number(item.discount_day_threshold) : null);
+    const discountDayPrice = eq?.price_per_day_discount ? Number(eq.price_per_day_discount) : (item.discount_day_price ? Number(item.discount_day_price) : null);
     const recalculatedDayPrice = (threshold && discountDayPrice && pricingDays >= threshold)
       ? discountDayPrice
-      : Number(selectedEq?.price_per_day || 0);
+      : Number(eq?.price_per_day ?? item.price_per_day ?? 0);
 
     const savedDiscountApplies = Boolean(
-      isEditingSameEquipment &&
+      isEditingThisEq &&
       savedDiscountDayPrice !== null &&
       (usedSavedDiscountDayPrice || (savedDiscountThreshold && pricingDays >= savedDiscountThreshold))
     );
 
     const savedBaseDayPrice = savedDiscountApplies ? savedDiscountDayPrice : savedDayPrice;
-    const effectiveDayPrice = isEditingSameEquipment && savedAppliedDayPrice !== null
+    const effectiveDayPrice = isEditingThisEq && savedAppliedDayPrice !== null
       ? savedAppliedDayPrice
-      : (isEditingSameEquipment && savedBaseDayPrice !== null ? savedBaseDayPrice : recalculatedDayPrice);
+      : (isEditingThisEq && savedBaseDayPrice !== null ? savedBaseDayPrice : recalculatedDayPrice);
 
-    const effectiveSessionPrice = isEditingSameEquipment && savedSessionPrice !== null
+    const effectiveSessionPrice = isEditingThisEq && savedSessionPrice !== null
       ? savedSessionPrice
-      : Number(selectedEq?.price_per_session || 0);
+      : Number(eq?.price_per_session ?? item.price_per_session ?? 0);
 
-    const eqTotal = (effectiveDayPrice * pricingDays) + (effectiveSessionPrice * pricingSessions);
+    const isDiscounted = Boolean(
+      (isEditingThisEq && (usedSavedDiscountDayPrice || savedDiscountApplies)) ||
+      (threshold && discountDayPrice && pricingDays >= threshold)
+    );
+
+    const itemSubtotal = (effectiveDayPrice * pricingDays) + (effectiveSessionPrice * pricingSessions);
+
+    return {
+      eq,
+      effectiveDayPrice,
+      effectiveSessionPrice,
+      isDiscounted,
+      discountDayPrice,
+      threshold,
+      itemSubtotal
+    };
+  };
+
+  const handleAddEquipment = (eqId) => {
+    if (!eqId) return;
+    const eq = (equipment || []).find(e => String(e.id) === String(eqId));
+    if (!eq) return;
+
+    const alreadySelected = currentItems.some(it => String(it.equipment_id || it.id) === String(eq.id));
+    if (alreadySelected) {
+      if (toast?.error) toast.error(`Thiết bị "${eq.name}" (${eq.code}) đã có trong đơn`);
+      return;
+    }
+
+    const newItem = {
+      equipment_id: eq.id,
+      id: eq.id,
+      name: eq.name,
+      code: eq.code,
+      category: eq.category,
+      branch_id: eq.branch_id,
+      branch_name: eq.branch_name,
+      price_per_day: eq.price_per_day,
+      price_per_session: eq.price_per_session,
+      price_per_day_discount: eq.price_per_day_discount,
+      discount_day_threshold: eq.discount_day_threshold,
+      unit_price: eq.price_per_day,
+      unit_price_session: eq.price_per_session,
+      is_primary: currentItems.length === 0
+    };
+
+    const newItems = [...currentItems, newItem];
+    setFormData({
+      ...formData,
+      items: newItems,
+      equipment_id: newItems[0]?.equipment_id || eq.id,
+      branch_id: formData.branch_id || eq.branch_id,
+      custom_total: null
+    });
+  };
+
+  const handleRemoveEquipment = (indexToRemove) => {
+    const newItems = currentItems.filter((_, idx) => idx !== indexToRemove);
+    if (newItems.length > 0 && !newItems.some(it => it.is_primary)) {
+      newItems[0].is_primary = true;
+    }
+    const primaryItem = newItems.find(it => it.is_primary) || newItems[0];
+    setFormData({
+      ...formData,
+      items: newItems,
+      equipment_id: primaryItem ? (primaryItem.equipment_id || primaryItem.id) : '',
+      custom_total: null
+    });
+  };
+
+  const handleSetPrimaryEquipment = (indexToPrimary) => {
+    const newItems = currentItems.map((it, idx) => ({
+      ...it,
+      is_primary: idx === indexToPrimary
+    }));
+    const primaryItem = newItems[indexToPrimary];
+    setFormData({
+      ...formData,
+      items: newItems,
+      equipment_id: primaryItem ? (primaryItem.equipment_id || primaryItem.id) : formData.equipment_id
+    });
+  };
+
+  const calculateGrandTotalForPreview = () => {
+    const { fullDays, sessions } = calculateTotalDays();
+    const pricingDays = fullDays;
+    const pricingSessions = sessions;
+
+    const itemsTotal = currentItems.reduce((sum, item) => {
+      const { itemSubtotal } = computeItemPricing(item, pricingDays, pricingSessions);
+      return sum + itemSubtotal;
+    }, 0);
+
     const accessoriesTotal = (formData.accessories || []).reduce((sum, acc) => {
       return sum + ((Number(acc.price_per_day || 0) * pricingDays) + (Number(acc.price_per_session || 0) * pricingSessions));
     }, 0);
 
-    const totalBeforeDiscount = eqTotal + accessoriesTotal;
+    const totalBeforeDiscount = itemsTotal + accessoriesTotal;
     let discountAmountVal = 0;
     if (formData.discount_type === 'percentage') {
       discountAmountVal = Math.round(totalBeforeDiscount * (Number(formData.discount_amount || 0) / 100));
@@ -289,6 +404,8 @@ const RentalModal = ({
       setPreviewLoading(false);
     }
   };
+
+  if (!showModal) return null;
 
   return (
     <div
@@ -820,42 +937,51 @@ const RentalModal = ({
           )}
 
           {step === 2 && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-              <div className="space-y-8">
-                <SectionHeader icon={<Package size={20} />} title="Thiết bị chính" />
-                <div className="space-y-6">
-                  <div>
-                    <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">Chọn máy ảnh / Ống kính</label>
-                    <CustomSelect
-                      options={(equipment || []).filter(e => e.category !== 'Phụ kiện' && e.condition !== 'maintenance')}
-                      value={formData.equipment_id}
-                      onChange={(val) => {
-                        const selected = equipment.find(e => e.id === val);
-                        const equipmentChanged = String(formData.equipment_id || '') !== String(val || '');
-                        setFormData({
-                          ...formData,
-                          equipment_id: val,
-                          branch_id: selected?.branch_id || formData.branch_id,
-                          custom_total: equipmentChanged ? null : formData.custom_total
-                        });
-                      }}
-                      labelField="name"
-                      placeholder="Tìm thiết bị..."
-                      renderOption={(eq) => (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 sm:gap-10">
+              <div className="space-y-6">
+                <SectionHeader icon={<Package size={20} />} title="Danh sách thiết bị thuê" />
+
+                {/* Equipment Picker */}
+                <div className="bg-orange-50/30 p-4 rounded-[1.5rem] border border-orange-100/60 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-[10px] sm:text-xs font-semibold text-orange-600 uppercase tracking-wider">
+                      Thêm máy ảnh / Ống kính vào đơn
+                    </label>
+                    <span className="text-[10px] font-semibold text-gray-400">
+                      Đã chọn: {currentItems.length} thiết bị
+                    </span>
+                  </div>
+                  <CustomSelect
+                    options={(equipment || []).filter(e => e.category !== 'Phụ kiện' && e.condition !== 'maintenance')}
+                    value=""
+                    onChange={(val) => {
+                      if (val) handleAddEquipment(val);
+                    }}
+                    labelField="name"
+                    placeholder="Chọn hoặc tìm kiếm thiết bị để thêm..."
+                    renderOption={(eq) => {
+                      const isAlreadyAdded = currentItems.some(it => String(it.equipment_id || it.id) === String(eq.id));
+                      return (
                         <div className="flex flex-col gap-1 py-0.5">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[10px] font-semibold rounded uppercase leading-none">
                               {eq.code}
                             </span>
-                            <span className="font-semibold truncate text-slate-800">{eq.name}</span>
+                            <span className={`font-semibold truncate ${isAlreadyAdded ? 'text-gray-400' : 'text-slate-800'}`}>
+                              {eq.name}
+                            </span>
                             <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-500 text-[9.5px] font-bold rounded-md leading-none border border-indigo-100 flex-shrink-0 flex items-center gap-1">
                               <Home size={10} className="text-indigo-400 flex-shrink-0" />
                               <span>{eq.branch_name || 'Hệ thống'}</span>
                             </span>
+                            {isAlreadyAdded && (
+                              <span className="px-1.5 py-0.5 bg-green-50 text-green-600 text-[9px] font-bold rounded-md border border-green-100 flex items-center gap-0.5">
+                                <CheckCircle2 size={10} /> Đã thêm
+                              </span>
+                            )}
                           </div>
-                          <div className="flex flex-col gap-1 mt-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-widest">
-                            <span className="text-orange-600/80">{formatPrice(eq.price_per_day)} / ngày</span>
-                            <span className="text-blue-600/80">{formatPrice(eq.price_per_session)} / buổi</span>
+                          <div className="flex flex-col gap-1 mt-1 text-[10px] font-semibold text-gray-400 uppercase tracking-widest">
+                            <span className="text-orange-600/80">{formatPrice(eq.price_per_day)} / ngày | {formatPrice(eq.price_per_session)} / buổi</span>
                             {eq.price_per_day_discount && eq.discount_day_threshold && (
                               <span className="text-amber-600/90 flex items-center gap-1">
                                 ★ Ưu đãi: {formatPrice(eq.price_per_day_discount)} / ngày (từ {eq.discount_day_threshold} ngày)
@@ -863,43 +989,125 @@ const RentalModal = ({
                             )}
                           </div>
                         </div>
-                      )}
-                    />
+                      );
+                    }}
+                  />
+                </div>
+
+                {/* Selected equipment list */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between px-1">
+                    <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      Thiết bị đã chọn ({currentItems.length})
+                    </h4>
+                    {currentItems.length > 0 && (
+                      <span className="text-[10px] text-gray-400">
+                        {renderTotalTime(calculateTotalDays())}
+                      </span>
+                    )}
                   </div>
 
-                  {formData.equipment_id && (
-                    <div className="bg-gray-50 p-4 rounded-[1.5rem] border border-gray-100 animate-in zoom-in-95 duration-300">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center border border-gray-100">
-                          <Package size={24} className="text-primary" />
-                        </div>
-                        <div>
-                          <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest">Đang chọn</p>
-                          <h4 className="text-base font-semibold text-gray-900 leading-tight">
-                            {(equipment || []).find(e => e.id === formData.equipment_id)?.name}
-                          </h4>
-                          <div className="flex items-center gap-1.5 mt-1.5">
-                            <span className="inline-block px-1.5 py-0.5 bg-primary/10 text-primary text-[9.5px] font-semibold uppercase rounded border border-primary/10">
-                              {(equipment || []).find(e => e.id === formData.equipment_id)?.code}
-                            </span>
-                            <span className="inline-block px-1.5 py-0.5 bg-indigo-50 text-indigo-600 text-[9.5px] font-semibold uppercase rounded border border-indigo-100 flex items-center gap-1">
-                              <Home size={10} className="text-indigo-400 flex-shrink-0" />
-                              <span>{(equipment || []).find(e => e.id === formData.equipment_id)?.branch_name || 'Hệ thống'}</span>
-                            </span>
-                          </div>
-                        </div>
+                  {currentItems.length === 0 ? (
+                    <div className="bg-gray-50/60 rounded-[1.5rem] border-2 border-dashed border-gray-200 p-8 text-center">
+                      <div className="w-12 h-12 bg-white rounded-2xl shadow-sm border border-gray-100 text-gray-400 flex items-center justify-center mx-auto mb-3">
+                        <Package size={22} />
                       </div>
+                      <p className="text-xs font-semibold text-gray-600">Chưa có thiết bị nào trong đơn</p>
+                      <p className="text-[11px] text-gray-400 mt-1">Vui lòng chọn thiết bị ở ô phía trên để thêm vào đơn thuê.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3 max-h-[380px] overflow-y-auto custom-scrollbar pr-1">
+                      {currentItems.map((item, idx) => {
+                        const { fullDays, sessions } = calculateTotalDays();
+                        const pricing = computeItemPricing(item, fullDays, sessions);
+                        const isPrimary = Boolean(item.is_primary || idx === 0);
+
+                        return (
+                          <div
+                            key={idx}
+                            className={`p-3.5 sm:p-4 rounded-2xl border transition-all ${
+                              isPrimary
+                                ? 'bg-orange-50/20 border-orange-200 shadow-sm'
+                                : 'bg-white border-gray-100 hover:border-gray-200 shadow-sm'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                                  <span className="px-1.5 py-0.5 bg-gray-100 text-gray-700 text-[10px] font-bold rounded uppercase">
+                                    #{item.code}
+                                  </span>
+                                  <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 text-[9.5px] font-semibold rounded border border-indigo-100 flex items-center gap-1">
+                                    <Home size={10} className="text-indigo-400" />
+                                    <span>{item.branch_name || pricing.eq?.branch_name || 'Hệ thống'}</span>
+                                  </span>
+                                  {isPrimary ? (
+                                    <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 text-[9.5px] font-bold rounded border border-emerald-100 flex items-center gap-1">
+                                      <Star size={10} className="fill-emerald-500 text-emerald-500" /> Thiết bị chính
+                                    </span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSetPrimaryEquipment(idx)}
+                                      className="px-1.5 py-0.5 bg-gray-50 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 text-[9px] font-semibold rounded border border-gray-100 transition-colors"
+                                      title="Đặt làm thiết bị chính"
+                                    >
+                                      Đặt làm chính
+                                    </button>
+                                  )}
+                                </div>
+                                <h4 className="text-sm font-bold text-slate-800 leading-snug break-words">
+                                  {item.name}
+                                </h4>
+                                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+                                  {fullDays > 0 && (
+                                    <span>
+                                      {fullDays}N x {pricing.isDiscounted ? <span className="text-amber-600 font-bold">{formatPrice(pricing.effectiveDayPrice)} ★</span> : formatPrice(pricing.effectiveDayPrice)}
+                                    </span>
+                                  )}
+                                  {fullDays > 0 && sessions > 0 && <span className="opacity-30">|</span>}
+                                  {sessions > 0 && (
+                                    <span>
+                                      {sessions}B x {formatPrice(pricing.effectiveSessionPrice)}
+                                    </span>
+                                  )}
+                                  {pricing.isDiscounted && (
+                                    <span className="text-amber-600 font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100">
+                                      Ưu đãi dài ngày
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="flex flex-col items-end justify-between self-stretch shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveEquipment(idx)}
+                                  className="p-1.5 text-gray-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                                  title="Xóa thiết bị này"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                                <div className="text-right mt-2">
+                                  <span className="text-[10px] text-gray-400 uppercase tracking-widest block font-medium">Thành tiền</span>
+                                  <span className="text-sm font-bold text-slate-900">{formatPrice(pricing.itemSubtotal)}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
-
                 </div>
               </div>
 
-              <div className="space-y-8">
+              {/* Accessories Section */}
+              <div className="space-y-6">
                 <SectionHeader icon={<Plus size={20} />} title="Phụ kiện đi kèm" />
 
-                <div className="bg-gray-50/50 p-6 rounded-[2rem] border border-gray-100/50">
-                  <div className="grid grid-cols-1 gap-4">
+                <div className="bg-gray-50/50 p-5 rounded-[2rem] border border-gray-100/50">
+                  <div className="grid grid-cols-1 gap-3">
                     {(equipment || [])
                       .filter(e => e.category === 'Phụ kiện' && e.condition !== 'maintenance')
                       .map((accEq) => {
@@ -908,7 +1116,7 @@ const RentalModal = ({
                         return (
                           <label
                             key={accEq.id}
-                            className={`flex items-center gap-4 p-4 rounded-2xl border-2 transition-all cursor-pointer group
+                            className={`flex items-center gap-3.5 p-3.5 rounded-2xl border-2 transition-all cursor-pointer group
                               ${isChecked
                                 ? 'bg-primary/5 border-primary shadow-sm'
                                 : 'bg-white border-transparent hover:border-gray-100 hover:shadow-sm'}
@@ -932,20 +1140,20 @@ const RentalModal = ({
                                       price_per_session: accEq.price_per_session
                                     }];
                                   }
-                                  setFormData({ ...formData, accessories: updated });
+                                  setFormData({ ...formData, accessories: updated, custom_total: null });
                                 }}
                               />
-                              <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all
+                              <div className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-all
                                 ${isChecked
                                   ? 'bg-primary border-primary text-white scale-110 shadow-lg shadow-primary/20'
                                   : 'bg-white border-gray-200 text-transparent group-hover:border-primary/50'}
                               `}>
-                                <CheckCircle2 size={16} strokeWidth={3} />
+                                <CheckCircle2 size={14} strokeWidth={3} />
                               </div>
                             </div>
 
-                            <div className="flex-1">
-                              <h4 className={`text-sm font-semibold transition-colors ${isChecked ? 'text-primary' : 'text-gray-700'}`}>
+                            <div className="flex-1 min-w-0">
+                              <h4 className={`text-sm font-semibold truncate transition-colors ${isChecked ? 'text-primary' : 'text-gray-700'}`}>
                                 {accEq.name}
                               </h4>
                               <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mt-0.5">
@@ -963,64 +1171,29 @@ const RentalModal = ({
                     )}
                   </div>
                 </div>
-
               </div>
-
             </div>
           )}
 
           {step === 3 && (() => {
             const { fullDays, sessions } = calculateTotalDays();
-            const selectedEq = (equipment || []).find(e => e.id === formData.equipment_id);
-            const isEditingSameEquipment = editingItem && String(editingItem.equipment_id) === String(formData.equipment_id);
-            const savedDayPrice = getNumberOrNull(formData.unit_price) ?? getNumberOrNull(editingItem?.unit_price);
-            const savedAppliedDayPrice = getNumberOrNull(formData.applied_day_price) ?? getNumberOrNull(editingItem?.applied_day_price);
-            const savedSessionPrice = getNumberOrNull(formData.unit_price_session) ?? getNumberOrNull(editingItem?.unit_price_session);
-            const savedDiscountDayPrice = getNumberOrNull(formData.discount_day_price) ?? getNumberOrNull(editingItem?.discount_day_price);
-            const savedDiscountThreshold = getNumberOrNull(formData.discount_day_threshold_snapshot) ?? getNumberOrNull(editingItem?.discount_day_threshold_snapshot);
-            const usedSavedDiscountDayPrice = Boolean(formData.used_discount_day_price ?? editingItem?.used_discount_day_price);
-            const isUsingSavedRentalPrice = isEditingSameEquipment && (savedDayPrice !== null || savedSessionPrice !== null);
-
-            // Mỗi buổi lẻ được tính riêng, không gộp thành ngày
             let pricingDays = fullDays;
             let pricingSessions = sessions;
-
-            // Ap dung gia uu dai neu du nguong
-            const threshold = selectedEq?.discount_day_threshold ? Number(selectedEq.discount_day_threshold) : null;
-            const discountDayPrice = selectedEq?.price_per_day_discount ? Number(selectedEq.price_per_day_discount) : null;
-            const recalculatedDayPrice = (threshold && discountDayPrice && pricingDays >= threshold)
-              ? discountDayPrice
-              : Number(selectedEq?.price_per_day || 0);
-            const savedDiscountApplies = Boolean(
-              isEditingSameEquipment &&
-              savedDiscountDayPrice !== null &&
-              (usedSavedDiscountDayPrice || (savedDiscountThreshold && pricingDays >= savedDiscountThreshold))
-            );
-            const savedBaseDayPrice = savedDiscountApplies
-              ? savedDiscountDayPrice
-              : savedDayPrice;
-            const effectiveDayPrice = isEditingSameEquipment && savedAppliedDayPrice !== null
-              ? savedAppliedDayPrice
-              : (isEditingSameEquipment && savedBaseDayPrice !== null ? savedBaseDayPrice : recalculatedDayPrice);
-            const effectiveUsesDiscount = isEditingSameEquipment && (usedSavedDiscountDayPrice || savedDiscountApplies)
-              ? true
-              : Boolean(threshold && discountDayPrice && pricingDays >= threshold);
-            const effectiveSessionPrice = isEditingSameEquipment && savedSessionPrice !== null
-              ? savedSessionPrice
-              : Number(selectedEq?.price_per_session || 0);
-            const currentDayPrice = Number(selectedEq?.price_per_day || 0);
-            const currentSessionPrice = Number(selectedEq?.price_per_session || 0);
-            const currentUsesDiscount = Boolean(threshold && discountDayPrice && pricingDays >= threshold);
 
             const calculateItemTotal = (dayPrice, sessionPrice) => {
               return (Number(dayPrice || 0) * pricingDays) + (Number(sessionPrice || 0) * pricingSessions);
             };
 
-            const eqTotal = (effectiveDayPrice * pricingDays) + (effectiveSessionPrice * pricingSessions);
+            const itemsWithPricing = currentItems.map((item) => {
+              const pricing = computeItemPricing(item, pricingDays, pricingSessions);
+              return { item, ...pricing };
+            });
+
+            const itemsTotal = itemsWithPricing.reduce((sum, it) => sum + it.itemSubtotal, 0);
             const accessoriesTotal = (formData.accessories || []).reduce((sum, acc) =>
               sum + calculateItemTotal(acc.price_per_day, acc.price_per_session), 0);
 
-            const totalBeforeDiscount = eqTotal + accessoriesTotal;
+            const totalBeforeDiscount = itemsTotal + accessoriesTotal;
             let discountAmountVal = 0;
             if (formData.discount_type === 'percentage') {
               discountAmountVal = Math.round(totalBeforeDiscount * (Number(formData.discount_amount || 0) / 100));
@@ -1032,7 +1205,6 @@ const RentalModal = ({
             const grandTotal = formData.custom_total !== undefined && formData.custom_total !== null && formData.custom_total !== ''
               ? Number(formData.custom_total)
               : calculatedGrandTotal;
-            const isDiscounted = effectiveUsesDiscount;
 
             return (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
@@ -1051,50 +1223,45 @@ const RentalModal = ({
                       </div>
 
                       <div className="space-y-3 sm:space-y-4">
-                        {selectedEq && (
-                          <div className="group">
-                            <div className="flex justify-between items-start gap-4">
-                              <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <h4 className="text-sm sm:text-base font-semibold text-gray-900 truncate group-hover:text-primary transition-colors">{selectedEq.name}</h4>
-                                  {isUsingSavedRentalPrice && (
-                                    <span
-                                      className="inline-flex items-center rounded-md border border-amber-100 bg-amber-50 px-2 py-0.5 text-[8px] font-semibold uppercase tracking-wider text-amber-700"
-                                      title="Giá được lưu tại thời điểm tạo đơn thuê"
-                                    >
-                                      Giá lúc tạo đơn
+                        {itemsWithPricing.map(({ item, eq, effectiveDayPrice, effectiveSessionPrice, isDiscounted, discountDayPrice, itemSubtotal }, idx) => {
+                          const isPrimary = Boolean(item.is_primary || idx === 0);
+                          return (
+                            <div key={idx} className="group pb-3 border-b border-gray-50 last:border-b-0 last:pb-0">
+                              <div className="flex justify-between items-start gap-4">
+                                <div className="min-w-0">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <h4 className="text-sm sm:text-base font-semibold text-gray-900 truncate group-hover:text-primary transition-colors">
+                                      {item.name}
+                                    </h4>
+                                    <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[9px] font-bold rounded uppercase">
+                                      #{item.code}
                                     </span>
-                                  )}
-                                </div>
-                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
-                                  <div className="text-[9px] sm:text-[10px] font-semibold text-gray-400 uppercase tracking-widest leading-relaxed">
-                                    {pricingDays > 0 && <span>{pricingDays}N x {isDiscounted ? <span className="text-amber-600">{formatPrice(effectiveDayPrice)} ★</span> : formatPrice(effectiveDayPrice)}</span>}
-                                    {pricingDays > 0 && pricingSessions > 0 && <span className="mx-1.5 opacity-30">|</span>}
-                                    {pricingSessions > 0 && <span>{pricingSessions}B x {formatPrice(effectiveSessionPrice)}</span>}
-                                  </div>
-                                </div>
-                                {isUsingSavedRentalPrice && (
-                                  <div className="mt-1 text-[9px] sm:text-[10px] font-semibold text-gray-900 uppercase tracking-widest leading-relaxed">
-                                    <span>Giá hiện tại:</span>
-                                    {currentUsesDiscount ? (
-                                      <span className="ml-1 text-amber-600">{formatPrice(discountDayPrice)}/N ★</span>
-                                    ) : (
-                                      <>
-                                        <span className="ml-1">{formatPrice(currentDayPrice)}/N</span>
-                                        <span className="mx-1.5 opacity-30">|</span>
-                                        <span>{formatPrice(currentSessionPrice)}/B</span>
-                                      </>
+                                    {isPrimary && (
+                                      <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 text-[8.5px] font-bold rounded border border-emerald-100">
+                                        Chính
+                                      </span>
                                     )}
                                   </div>
-                                )}
-                              </div>
-                              <div className="text-right shrink-0">
-                                <p className="text-[8px] font-semibold uppercase tracking-widest text-gray-300 mb-0.5">Thành tiền</p>
-                                <span className="text-sm font-semibold text-gray-900 whitespace-nowrap">{formatPrice(eqTotal)}</span>
+                                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+                                    <div className="text-[9px] sm:text-[10px] font-semibold text-gray-400 uppercase tracking-widest leading-relaxed">
+                                      {pricingDays > 0 && (
+                                        <span>
+                                          {pricingDays}N x {isDiscounted ? <span className="text-amber-600 font-bold">{formatPrice(effectiveDayPrice)} ★</span> : formatPrice(effectiveDayPrice)}
+                                        </span>
+                                      )}
+                                      {pricingDays > 0 && pricingSessions > 0 && <span className="mx-1.5 opacity-30">|</span>}
+                                      {pricingSessions > 0 && <span>{pricingSessions}B x {formatPrice(effectiveSessionPrice)}</span>}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <p className="text-[8px] font-semibold uppercase tracking-widest text-gray-300 mb-0.5">Thành tiền</p>
+                                  <span className="text-sm font-semibold text-gray-900 whitespace-nowrap">{formatPrice(itemSubtotal)}</span>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        )}
+                          );
+                        })}
 
                         {(formData.accessories || []).length > 0 && (
                           <div className="pt-3 border-t border-gray-50 space-y-3">
@@ -1485,7 +1652,7 @@ const RentalModal = ({
                     !formData.start_date || !formData.end_date || !formData.pickup_branch_id || !formData.return_branch_id ||
                     !formData.handover_user_id
                   )) ||
-                  (step === 2 && !formData.equipment_id)
+                  (step === 2 && currentItems.length === 0)
                 }
                 className="px-4 sm:px-8 py-2.5 sm:py-3 bg-secondary text-white rounded-xl sm:rounded-2xl font-semibold uppercase tracking-wider sm:tracking-widest text-[10px] sm:text-xs shadow-lg shadow-secondary/20 hover:shadow-secondary/30 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50 disabled:grayscale whitespace-nowrap"
               >

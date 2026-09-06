@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import {
   getEquipmentTransfers, createEquipmentTransfer, approveTransfer,
   rejectTransfer, completeTransfer, cancelTransfer, deleteEquipmentTransfer,
-  getBranches, getEquipment
+  getBranches, getEquipment, getBranchTransferStats
 } from '../../api/client';
 import {
   ArrowRightLeft, Plus, Check, X, Ban, Trash2,
-  Clock, CheckCircle2, XCircle, PackageCheck, ChevronDown
+  Clock, CheckCircle2, XCircle, PackageCheck, ChevronDown,
+  Building2, ArrowDownRight, ArrowUpRight, Layers
 } from 'lucide-react';
 import { useToast, ToastContainer } from '../../components/Toast';
 import ModernMonthPicker from '../../components/ModernMonthPicker';
@@ -38,6 +39,7 @@ const EquipmentTransfers = () => {
   const { toasts, removeToast, toast } = useToast();
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   const [transfers, setTransfers] = useState([]);
+  const [branchStats, setBranchStats] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({ equipment_id: '', to_branch_id: '', reason: '', notes: '' });
@@ -56,13 +58,15 @@ const EquipmentTransfers = () => {
       const params = { month: selectedMonth, _t: Date.now() };
       if (statusFilter) params.status = statusFilter;
 
-      const [transfersRes, branchesRes, eqRes] = await Promise.all([
+      const [transfersRes, branchesRes, eqRes, branchStatsRes] = await Promise.all([
         getEquipmentTransfers(params).catch(() => ({ data: { transfers: [] } })),
         getBranches().catch(() => ({ data: [] })),
-        getEquipment ? getEquipment({ limit: 500 }).catch(() => ({ data: { data: [] } })) : Promise.resolve({ data: { data: [] } })
+        getEquipment ? getEquipment({ limit: 500 }).catch(() => ({ data: { data: [] } })) : Promise.resolve({ data: { data: [] } }),
+        getBranchTransferStats().catch(() => ({ data: { branches: [] } }))
       ]);
 
       setTransfers(transfersRes.data?.transfers || []);
+      setBranchStats(branchStatsRes.data?.branches || []);
       const branchList = Array.isArray(branchesRes.data) ? branchesRes.data : (branchesRes.data?.branches || []);
       setBranches(branchList.map(b => ({ id: b.id, name: b.name })));
 
@@ -132,6 +136,8 @@ const EquipmentTransfers = () => {
     completed: safeList.filter(t => t.status === 'completed').length,
   };
 
+  const totalSystemEquipment = branchStats.reduce((sum, b) => sum + (Number(b.current_count) || 0), 0);
+
   const statusFilterOptions = [
     { id: '', name: 'Tất cả' },
     { id: 'pending', name: 'Chờ duyệt' },
@@ -175,6 +181,108 @@ const EquipmentTransfers = () => {
               <p className={`text-2xl font-extrabold text-${kpi.color}-600 mt-1`}>{kpi.value}</p>
             </div>
           ))}
+        </div>
+
+        {/* Phân bổ số lượng thiết bị theo từng cơ sở */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 md:p-6 mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
+                <Building2 size={20} />
+              </div>
+              <div>
+                <h2 className="text-base md:text-lg font-bold text-gray-900 leading-tight">
+                  Số lượng thiết bị thực tế theo từng cơ sở
+                </h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Số lượng hiện tại = Ban đầu <span className="font-semibold text-slate-700">(Gốc)</span> - Chuyển đi + Chuyển đến
+                </p>
+              </div>
+            </div>
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs font-semibold text-slate-700 self-start sm:self-auto">
+              <Layers size={14} className="text-indigo-600" />
+              <span>Toàn hệ thống: <strong className="text-indigo-600 font-bold">{totalSystemEquipment}</strong> thiết bị</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {branchStats.map((b) => {
+              const diff = (b.transferred_in || 0) - (b.transferred_out || 0);
+              return (
+                <div 
+                  key={b.id} 
+                  className="rounded-xl border border-slate-200/90 bg-gradient-to-b from-white to-slate-50/60 p-4 hover:shadow-md hover:border-indigo-200 transition-all flex flex-col justify-between"
+                >
+                  <div>
+                    {/* Header: Name & Code */}
+                    <div className="flex items-start justify-between gap-2 mb-3">
+                      <h4 className="font-bold text-slate-900 text-sm leading-snug line-clamp-1" title={b.name}>
+                        {b.name}
+                      </h4>
+                      {b.code && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 text-slate-600 uppercase shrink-0">
+                          {b.code}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Main count */}
+                    <div className="mb-4">
+                      <span className="text-[11px] uppercase tracking-wider text-slate-400 font-semibold block mb-1">
+                        Hiện có mặt tại cơ sở
+                      </span>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-3xl font-extrabold text-indigo-600 leading-none">
+                          {b.current_count}
+                        </span>
+                        <span className="text-xs font-semibold text-slate-500">thiết bị</span>
+                        {diff !== 0 && (
+                          <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md ${
+                            diff > 0 
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                              : 'bg-rose-50 text-rose-700 border border-rose-200'
+                          }`}>
+                            {diff > 0 ? `+${diff}` : diff}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Breakdown & formula */}
+                  <div className="pt-3 border-t border-slate-100 space-y-1.5 text-xs">
+                    <div className="flex items-center justify-between text-slate-600">
+                      <span className="text-slate-500">Thiết bị ban đầu:</span>
+                      <span className="font-bold text-slate-800">{b.initial_count}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500 flex items-center gap-1">
+                        <ArrowDownRight size={13} className="text-rose-500" />
+                        Đã chuyển đi:
+                      </span>
+                      <span className="font-bold text-rose-600">
+                        -{b.transferred_out}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500 flex items-center gap-1">
+                        <ArrowUpRight size={13} className="text-emerald-500" />
+                        Được chuyển đến:
+                      </span>
+                      <span className="font-bold text-emerald-600">
+                        +{b.transferred_in}
+                      </span>
+                    </div>
+                    <div className="mt-2.5 pt-2 border-t border-dashed border-slate-200 flex items-center justify-center">
+                      <span className="text-[11px] font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md font-medium">
+                        {b.initial_count} - {b.transferred_out} + {b.transferred_in} = <strong className="text-indigo-600">{b.current_count}</strong>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         {/* Table */}

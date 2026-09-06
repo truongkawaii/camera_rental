@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   Package, Store, Edit2, Trash2, ImageIcon, Clock,
   Search, SlidersHorizontal, X, ChevronDown, User, Home,
-  ArrowUpDown, CalendarDays,
+  ArrowUpDown, CalendarDays, Truck,
 } from 'lucide-react';
 import { formatPrice, formatPeriodDate, formatTime, formatVN, getFirstImage } from '../../../utils/formatters';
 import LazyImage from '../../../components/LazyImage';
@@ -898,15 +898,45 @@ const RentalList = React.memo(({
                   <span className="mt-0.5 p-1 bg-orange-50 rounded-lg text-orange-500 flex-shrink-0">
                     <Package size={13} />
                   </span>
-                  <div>
-                    <span className="text-[13px] font-semibold text-slate-700 block leading-tight">{rental.equipment_name}</span>
-                    <div className="mt-1">
-                      <span className="text-[10px] font-semibold text-orange-500/70 uppercase tracking-widest block mb-0.5">#{rental.equipment_code}</span>
-                      <div className="flex items-center gap-1 text-[10px] text-indigo-500 font-semibold">
-                        <Home size={10} className="text-indigo-400 flex-shrink-0" />
-                        <span className="truncate">{rental.original_branch_name || 'Hệ thống'}</span>
+                  <div className="flex-1 min-w-0">
+                    {Array.isArray(rental.items) && rental.items.length > 1 ? (
+                      <div className="space-y-1.5">
+                        {rental.items.map((it, idx) => (
+                          <div key={idx} className="flex items-start gap-1.5">
+                            <span className="text-[9.5px] font-bold text-orange-600 bg-orange-50 border border-orange-200/60 px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 mt-0.5">
+                              #{it.code}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1">
+                                <span className="text-[12.5px] font-semibold text-slate-800 truncate block leading-tight">{it.name}</span>
+                                {it.is_primary && (
+                                  <span className="text-[8.5px] font-semibold text-amber-600 bg-amber-50 px-1 rounded border border-amber-200/60 shrink-0">
+                                    Chính
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1 text-[10px] text-indigo-500 font-medium">
+                                <Home size={9} className="text-indigo-400 flex-shrink-0" />
+                                <span className="truncate">{it.branch_name || rental.original_branch_name || 'Hệ thống'}</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    </div>
+                    ) : (
+                      <div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[13px] font-semibold text-slate-700 block leading-tight">{rental.equipment_name}</span>
+                        </div>
+                        <div className="mt-1">
+                          <span className="text-[10px] font-semibold text-orange-500/70 uppercase tracking-widest block mb-0.5">#{rental.equipment_code}</span>
+                          <div className="flex items-center gap-1 text-[10px] text-indigo-500 font-semibold">
+                            <Home size={10} className="text-indigo-400 flex-shrink-0" />
+                            <span className="truncate">{rental.original_branch_name || 'Hệ thống'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
                 {rental.pickup_branch_name && (
@@ -931,6 +961,14 @@ const RentalList = React.memo(({
                   </span>
                   <span className="truncate">{rental.full_name || 'Hệ thống'}</span>
                 </div>
+                {rental.handover_user_name && (
+                  <div className="flex items-center gap-2 text-[11.5px] text-blue-600 font-semibold mt-1">
+                    <span className="p-1 bg-blue-50 rounded-lg text-blue-500 flex-shrink-0">
+                      <Truck size={13} />
+                    </span>
+                    <span className="truncate">Giao nhận: {rental.handover_user_name}</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1001,16 +1039,16 @@ const RentalList = React.memo(({
       <div className="hidden xl:block overflow-visible px-5 pb-2">
         <table className="w-full table-fixed border-separate border-spacing-y-2">
           <colgroup>
-            <col className="w-[8%]" />
-            <col className="w-[8%]" />
-            <col className="w-[12%]" />
-            <col className="w-[13%]" />
+            <col className="w-[7%]" />
+            <col className="w-[7%]" />
+            <col className="w-[11%]" />
+            <col className="w-[19%]" />
             <col className="w-[10%]" />
-            <col className="w-[11%]" />
-            <col className="w-[11%]" />
+            <col className="w-[10%]" />
+            <col className="w-[10%]" />
             <col className="w-[8%]" />
             <col className="w-[8%]" />
-            <col className="w-[11%]" />
+            <col className="w-[10%]" />
           </colgroup>
           <thead>
             <tr>
@@ -1063,19 +1101,51 @@ const RentalList = React.memo(({
 
                   {/* Thiết bị */}
                   <td className="px-2.5 py-4 bg-white border-y border-slate-100 group-hover:border-blue-200 transition-colors min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="p-1 bg-orange-50 rounded-lg text-orange-500 group-hover:bg-orange-100 transition-colors">
+                    <div className="flex items-start gap-2">
+                      <span className="p-1 bg-orange-50 rounded-lg text-orange-500 group-hover:bg-orange-100 transition-colors mt-0.5">
                         <Package size={13} />
                       </span>
                       <div className="min-w-0 w-full">
-                        <p className="font-semibold text-slate-800 text-[12.5px] truncate">{rental.equipment_name}</p>
-                        <div className="mt-1">
-                          <span className="text-[9.5px] font-semibold text-orange-500/60 uppercase tracking-wider block mb-0.5 truncate">{rental.equipment_code}</span>
-                          <div className="flex items-center gap-1 text-[10.5px] text-indigo-500 font-semibold">
-                            <Home size={10} className="text-indigo-400 flex-shrink-0" />
-                            <span className="truncate">{rental.original_branch_name || 'Hệ thống'}</span>
+                        {Array.isArray(rental.items) && rental.items.length > 1 ? (
+                          <div className="space-y-1.5">
+                            {rental.items.map((it, idx) => (
+                              <div key={idx} className="flex items-start gap-1.5">
+                                <span className="text-[9.5px] font-bold text-orange-600 bg-orange-50 border border-orange-200/60 px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 mt-0.5">
+                                  #{it.code}
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5">
+                                    <p className="font-semibold text-slate-800 text-[12.5px] leading-tight break-words line-clamp-2" title={it.name}>
+                                      {it.name}
+                                    </p>
+                                    {it.is_primary && (
+                                      <span className="text-[8.5px] font-semibold text-amber-600 bg-amber-50 px-1 rounded border border-amber-200/60 shrink-0">
+                                        Chính
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-1 text-[10px] text-indigo-500 font-medium">
+                                    <Home size={9} className="text-indigo-400 flex-shrink-0" />
+                                    <span className="truncate">{it.branch_name || rental.original_branch_name || 'Hệ thống'}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                        </div>
+                        ) : (
+                          <div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="font-semibold text-slate-800 text-[12.5px] truncate">{rental.equipment_name}</p>
+                            </div>
+                            <div className="mt-1">
+                              <span className="text-[9.5px] font-semibold text-orange-500/60 uppercase tracking-wider block mb-0.5 truncate">#{rental.equipment_code}</span>
+                              <div className="flex items-center gap-1 text-[10.5px] text-indigo-500 font-semibold">
+                                <Home size={10} className="text-indigo-400 flex-shrink-0" />
+                                <span className="truncate">{rental.original_branch_name || 'Hệ thống'}</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </td>
@@ -1094,6 +1164,12 @@ const RentalList = React.memo(({
                           <div className="text-[11px] font-semibold leading-snug whitespace-normal break-words text-emerald-600">
                             Trả: {rental.return_branch_name || rental.pickup_branch_name || '—'}
                           </div>
+                          {rental.handover_user_name && (
+                            <div className="text-[10.5px] font-semibold text-blue-600 flex items-center gap-1 mt-1 truncate" title={`Người giao nhận: ${rental.handover_user_name}`}>
+                              <Truck size={11} className="text-blue-500 shrink-0" />
+                              <span className="truncate">GN: {rental.handover_user_name}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ) : (

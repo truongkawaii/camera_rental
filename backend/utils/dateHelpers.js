@@ -1,15 +1,37 @@
-// utils/dateHelpers.js
+const toDateOnlyString = (dateVal) => {
+  if (!dateVal) return '';
+  if (dateVal instanceof Date) {
+    if (isNaN(dateVal.getTime())) return '';
+    const vnDate = new Date(dateVal.getTime() + 7 * 3600 * 1000);
+    return vnDate.toISOString().slice(0, 10);
+  }
+  const str = String(dateVal).trim();
+  const match = str.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (match) {
+    return match[1];
+  }
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) {
+    const vnDate = new Date(parsed.getTime() + 7 * 3600 * 1000);
+    return vnDate.toISOString().slice(0, 10);
+  }
+  return str.slice(0, 10);
+};
+
 /**
  * Convert a date string and period to a full datetime string in GMT (UTC).
  * Periods: "sáng" -> 08:00:00, "chiều" -> 13:00:00, "tối" -> 18:00:00
  * Assumes the input period is in VN time (+07:00).
  */
 const getDateTimeForPeriod = (dateStr, period) => {
-  const dStr = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr.substring(0, 10);
+  if (!dateStr) return null;
+  const dStr = toDateOnlyString(dateStr);
+  if (!dStr) return null;
   let time = '08:00:00';
   if (period === 'chiều') time = '13:00:00';
   if (period === 'tối') time = '18:00:00';
-  return new Date(`${dStr}T${time}+07:00`).toISOString();
+  const dt = new Date(`${dStr}T${time}+07:00`);
+  return isNaN(dt.getTime()) ? null : dt.toISOString();
 };
 
 /**
@@ -21,8 +43,10 @@ const getDateTimeForPeriod = (dateStr, period) => {
  * Returns { fullDays, sessions } where sessions is 0‑2.
  */
 const calculateDaysSessions = (start_date, start_period, end_date, end_period) => {
-  const d1Str = start_date.includes('T') ? start_date.split('T')[0] : start_date.substring(0, 10);
-  const d2Str = end_date.includes('T') ? end_date.split('T')[0] : end_date.substring(0, 10);
+  if (!start_date || !end_date) return { fullDays: 0, sessions: 0 };
+  const d1Str = toDateOnlyString(start_date);
+  const d2Str = toDateOnlyString(end_date);
+  if (!d1Str || !d2Str) return { fullDays: 0, sessions: 0 };
 
   const d1 = new Date(d1Str + 'T00:00:00Z');
   const d2 = new Date(d2Str + 'T00:00:00Z');
@@ -68,15 +92,27 @@ const calculateDaysSessions = (start_date, start_period, end_date, end_period) =
   return { fullDays, sessions };
 };
 
-/**
- * Format a local VN time string (from frontend) into GMT (UTC) ISO string.
- */
 const formatLocalToGMT = (d) => {
   if (!d) return null;
-  if (d.includes('+') || d.includes('Z')) return new Date(d).toISOString();
-  if (d.length === 16 && d.includes('T')) return new Date(`${d}:00+07:00`).toISOString();
-  if (d.length === 10) return new Date(`${d}T00:00:00+07:00`).toISOString();
-  return new Date(`${d}+07:00`).toISOString();
+  if (d instanceof Date) {
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  const str = String(d).trim();
+  if (!str) return null;
+  if (str.includes('+') || str.includes('Z')) {
+    const dt = new Date(str);
+    return isNaN(dt.getTime()) ? null : dt.toISOString();
+  }
+  if (str.length === 16 && str.includes('T')) {
+    const dt = new Date(`${str}:00+07:00`);
+    return isNaN(dt.getTime()) ? null : dt.toISOString();
+  }
+  if (str.length === 10) {
+    const dt = new Date(`${str}T00:00:00+07:00`);
+    return isNaN(dt.getTime()) ? null : dt.toISOString();
+  }
+  const dt = new Date(`${str}+07:00`);
+  return isNaN(dt.getTime()) ? null : dt.toISOString();
 };
 
 module.exports = { getDateTimeForPeriod, calculateDaysSessions, formatLocalToGMT };

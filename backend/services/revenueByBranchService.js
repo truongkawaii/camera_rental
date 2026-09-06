@@ -206,6 +206,10 @@ function fetchBranchStats(pool, params) {
         )
         AND ($3::int IS NULL OR r.user_id = $3)
         AND ($4::int IS NULL OR EXISTS (
+          SELECT 1 FROM rental_items ri_owner
+          JOIN equipment e_owner ON e_owner.id = ri_owner.equipment_id
+          WHERE ri_owner.rental_id = r.id AND ri_owner.is_deleted = false AND e_owner.owner_id = $4 AND e_owner.is_deleted = false
+        ) OR EXISTS (
           SELECT 1 FROM equipment e_owner
           WHERE e_owner.id = r.equipment_id AND e_owner.owner_id = $4 AND e_owner.is_deleted = false
         ))
@@ -248,6 +252,10 @@ function fetchBranchStats(pool, params) {
         AND r.returned_at <= $2
         AND ($3::int IS NULL OR r.user_id = $3 OR r.handover_user_id = $3)
         AND ($4::int IS NULL OR EXISTS (
+          SELECT 1 FROM rental_items ri_owner
+          JOIN equipment e_owner ON e_owner.id = ri_owner.equipment_id
+          WHERE ri_owner.rental_id = r.id AND ri_owner.is_deleted = false AND e_owner.owner_id = $4 AND e_owner.is_deleted = false
+        ) OR EXISTS (
           SELECT 1 FROM equipment e_owner
           WHERE e_owner.id = r.equipment_id AND e_owner.owner_id = $4 AND e_owner.is_deleted = false
         ))
@@ -426,6 +434,10 @@ function fetchEmployeeStats(pool, params) {
            AND r.status = 'completed')
         )
         AND ($3::int IS NULL OR EXISTS (
+          SELECT 1 FROM rental_items ri_owner
+          JOIN equipment e_owner ON e_owner.id = ri_owner.equipment_id
+          WHERE ri_owner.rental_id = r.id AND ri_owner.is_deleted = false AND e_owner.owner_id = $3 AND e_owner.is_deleted = false
+        ) OR EXISTS (
           SELECT 1 FROM equipment e_owner
           WHERE e_owner.id = r.equipment_id AND e_owner.owner_id = $3 AND e_owner.is_deleted = false
         ))

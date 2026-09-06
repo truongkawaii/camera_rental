@@ -435,6 +435,30 @@ const initDB = async () => {
     // Rental accessories
     await pool.query(`CREATE TABLE IF NOT EXISTS rental_accessories (id SERIAL PRIMARY KEY, rental_id INTEGER REFERENCES rentals(id) ON DELETE CASCADE, equipment_id INTEGER REFERENCES equipment(id), unit_price DECIMAL(10, 2) NOT NULL, unit_price_session DECIMAL(10, 2), ${AUDIT_COLUMNS})`);
 
+    // Rental items (supports multiple equipment items per rental order)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS rental_items (
+        id SERIAL PRIMARY KEY,
+        rental_id INTEGER NOT NULL REFERENCES rentals(id) ON DELETE CASCADE,
+        equipment_id INTEGER NOT NULL REFERENCES equipment(id),
+        unit_price DECIMAL(10, 2) NOT NULL,
+        unit_price_session DECIMAL(10, 2) DEFAULT 0,
+        applied_day_price DECIMAL(10, 2),
+        used_discount_day_price BOOLEAN DEFAULT FALSE,
+        discount_day_price DECIMAL(10, 2),
+        discount_day_threshold_snapshot INTEGER,
+        rent_days INTEGER DEFAULT 0,
+        rent_sessions INTEGER DEFAULT 0,
+        subtotal DECIMAL(10, 2) NOT NULL DEFAULT 0,
+        discount_share DECIMAL(10, 2) NOT NULL DEFAULT 0,
+        item_total DECIMAL(10, 2) NOT NULL DEFAULT 0,
+        is_primary BOOLEAN DEFAULT FALSE,
+        ${AUDIT_COLUMNS}
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_rental_items_rental_id ON rental_items(rental_id) WHERE is_deleted = false');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_rental_items_equipment_id ON rental_items(equipment_id) WHERE is_deleted = false');
+
     // Equipment maintenance
     await pool.query(`CREATE TABLE IF NOT EXISTS equipment_maintenance (id SERIAL PRIMARY KEY, equipment_id INTEGER NOT NULL REFERENCES equipment(id), maintenance_type VARCHAR(100), description TEXT, maintenance_cost DECIMAL(10, 2), maintenance_date TIMESTAMPTZ DEFAULT NOW(), completed_date TIMESTAMPTZ, status VARCHAR(50) DEFAULT 'pending', ${AUDIT_COLUMNS})`);
 
@@ -542,10 +566,14 @@ const initDB = async () => {
     // Add current_branch_id to equipment (NULL = at home branch)
     await pool.query(`ALTER TABLE equipment ADD COLUMN IF NOT EXISTS current_branch_id INTEGER REFERENCES branches(id)`);
 
+    // Ensure provider and notes columns on equipment_maintenance
+    await pool.query(`ALTER TABLE equipment_maintenance ADD COLUMN IF NOT EXISTS provider VARCHAR(255)`);
+    await pool.query(`ALTER TABLE equipment_maintenance ADD COLUMN IF NOT EXISTS notes TEXT`);
+
     // Dynamic Migration for existing tables to ensure they have audit columns
     const tables = [
       'branches', 'roles', 'users', 'user_roles', 'user_branches', 'customers', 'equipment_categories',
-      'equipment', 'rentals', 'rental_accessories', 'equipment_maintenance',
+      'equipment', 'rentals', 'rental_accessories', 'rental_items', 'equipment_maintenance',
       'tasks', 'financial_transactions', 'sales_transfer_logs', 'payroll_snapshots', 'activity_logs', 'ads_costs', 'misc_costs', 'entity_images',
       'commission_rule_sets', 'commission_rule_set_users', 'collaborator_hierarchy', 'rental_commission_ledger',
       'equipment_transfers'
@@ -568,6 +596,43 @@ const initDB = async () => {
       } catch (err) {
         // Silently skip if table doesn't exist yet
       }
+    }
+
+    // Backfill rental_items from rentals for existing rows without rental_items
+    try {
+      await pool.query(`
+        INSERT INTO rental_items (
+          rental_id, equipment_id, unit_price, unit_price_session,
+          applied_day_price, used_discount_day_price, discount_day_price, discount_day_threshold_snapshot,
+          rent_days, rent_sessions, subtotal, discount_share, item_total, is_primary,
+          inserted_at, updated_at, inserted_by, updated_by
+        )
+        SELECT
+          r.id,
+          r.equipment_id,
+          COALESCE(r.unit_price, 0),
+          COALESCE(r.unit_price_session, 0),
+          COALESCE(r.applied_day_price, r.unit_price, 0),
+          COALESCE(r.used_discount_day_price, false),
+          r.discount_day_price,
+          r.discount_day_threshold_snapshot,
+          0, 0,
+          r.total_price + COALESCE(r.discount_amount, 0),
+          COALESCE(r.discount_amount, 0),
+          r.total_price,
+          true,
+          r.inserted_at,
+          r.updated_at,
+          r.inserted_by,
+          r.updated_by
+        FROM rentals r
+        WHERE r.equipment_id IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM rental_items ri WHERE ri.rental_id = r.id AND ri.is_deleted = false
+          )
+      `);
+    } catch (err) {
+      console.error('Error backfilling rental_items:', err);
     }
 
     // Existing migrations (keep for compatibility and ensure columns exist)

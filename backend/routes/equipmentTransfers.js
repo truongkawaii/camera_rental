@@ -65,6 +65,34 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────
+// GET /api/equipment-transfers/branch-stats
+// Thống kê số lượng thiết bị theo từng cơ sở (Gốc, Chuyển đi, Chuyển đến, Hiện tại)
+// ─────────────────────────────────────────────────────────────────────
+router.get('/branch-stats', authenticate, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        b.id,
+        b.name,
+        b.code,
+        COUNT(CASE WHEN e.branch_id = b.id THEN 1 END)::int AS initial_count,
+        COUNT(CASE WHEN e.branch_id = b.id AND e.current_branch_id IS NOT NULL AND e.current_branch_id != b.id THEN 1 END)::int AS transferred_out,
+        COUNT(CASE WHEN e.current_branch_id = b.id AND e.branch_id != b.id THEN 1 END)::int AS transferred_in,
+        COUNT(CASE WHEN COALESCE(e.current_branch_id, e.branch_id) = b.id THEN 1 END)::int AS current_count
+      FROM branches b
+      LEFT JOIN equipment e ON (e.branch_id = b.id OR e.current_branch_id = b.id) AND e.is_deleted = false
+      WHERE b.is_deleted = false
+      GROUP BY b.id, b.name, b.code, b.order_number
+      ORDER BY b.order_number ASC NULLS LAST, b.id ASC
+    `);
+    res.json({ branches: result.rows });
+  } catch (error) {
+    console.error('Fetch branch equipment stats error:', error);
+    res.status(500).json({ error: 'Không thể tải thống kê thiết bị theo cơ sở' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────
 // GET /api/equipment-transfers/:id
 // ─────────────────────────────────────────────────────────────────────
 router.get('/:id', authenticate, async (req, res) => {

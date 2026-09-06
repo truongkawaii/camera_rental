@@ -102,46 +102,12 @@ const validateDriverUser = async (client, userId) => {
   return result.rows.length > 0;
 };
 
-// Helper functions reused from original file
-const checkAvailability = async (equipmentId, startDate, endDate, excludeRentalId = null) => {
-  try {
-    const query = `
-      SELECT id FROM rentals
-      WHERE equipment_id = $1
-        AND is_deleted = false
-        AND status != 'cancelled'
-        AND status != 'completed'
-        AND (start_date <= $3 AND end_date >= $2)
-        ${excludeRentalId ? 'AND id != $4' : ''}
-    `;
-    const params = [equipmentId, startDate, endDate];
-    if (excludeRentalId) params.push(excludeRentalId);
-    const result = await pool.query(query, params);
-    if (result.rows.length > 0) return false;
-
-    // Check maintenance overlap
-    const maintenanceQuery = `
-      SELECT id FROM equipment_maintenance
-      WHERE equipment_id = $1
-        AND is_deleted = false
-        AND status IN ('Đã lên lịch', 'Đang bảo trì')
-        AND (maintenance_date <= $3 AND (completed_date IS NULL OR completed_date >= $2))
-    `;
-    const maintenanceResult = await pool.query(maintenanceQuery, [equipmentId, startDate, endDate]);
-    return maintenanceResult.rows.length === 0;
-  } catch (err) {
-    console.error('Check availability error:', err);
-    throw err;
-  }
-};
-
-// Check accessories for conflicts. An accessory is considered busy if it appears
-// in ANY overlapping rental, either as the main equipment or as a rental_accessories mapping.
-const findConflictingAccessoryIds = async (accessoryIds, startDate, endDate, excludeRentalId = null) => {
-  if (!Array.isArray(accessoryIds) || accessoryIds.length === 0) return [];
+// Helper functions for multi-equipment conflict checking & pricing
+const findConflictingEquipmentIds = async (equipmentIds, startDate, endDate, excludeRentalId = null) => {
+  if (!Array.isArray(equipmentIds) || equipmentIds.length === 0) return [];
   try {
     const excludeClause = excludeRentalId ? ' AND r.id != $4' : '';
-    const params = [accessoryIds, startDate, endDate];
+    const params = [equipmentIds, startDate, endDate];
     if (excludeRentalId) params.push(excludeRentalId);
 
     const query = `
@@ -150,6 +116,16 @@ const findConflictingAccessoryIds = async (accessoryIds, startDate, endDate, exc
         SELECT r.equipment_id AS conflict_id
         FROM rentals r
         WHERE r.equipment_id = ANY($1)
+          AND r.is_deleted = false
+          AND r.status NOT IN ('cancelled', 'completed')
+          AND (r.start_date <= $3 AND r.end_date >= $2)
+          ${excludeClause}
+        UNION
+        SELECT ri.equipment_id AS conflict_id
+        FROM rental_items ri
+        JOIN rentals r ON r.id = ri.rental_id
+        WHERE ri.equipment_id = ANY($1)
+          AND ri.is_deleted = false
           AND r.is_deleted = false
           AND r.status NOT IN ('cancelled', 'completed')
           AND (r.start_date <= $3 AND r.end_date >= $2)
@@ -174,11 +150,183 @@ const findConflictingAccessoryIds = async (accessoryIds, startDate, endDate, exc
       ) conflicts
     `;
     const result = await pool.query(query, params);
-    return result.rows.map((row) => Number(row.conflict_id));
+    return [...new Set(result.rows.map((row) => Number(row.conflict_id)))];
   } catch (err) {
-    console.error('Check accessory availability error:', err);
+    console.error('Check equipment availability error:', err);
     throw err;
   }
+};
+
+const checkAvailability = async (equipmentId, startDate, endDate, excludeRentalId = null) => {
+  const conflicts = await findConflictingEquipmentIds([Number(equipmentId)], startDate, endDate, excludeRentalId);
+  return conflicts.length === 0;
+};
+
+// Check accessories for backward compatibility
+const findConflictingAccessoryIds = async (accessoryIds, startDate, endDate, excludeRentalId = null) => {
+  return findConflictingEquipmentIds(accessoryIds, startDate, endDate, excludeRentalId);
+};
+
+// Calculate itemized pricing, discounts, and totals for multiple equipment items
+const resolveAndPriceRentalItems = async (client, {
+  requestedEquipmentIds,
+  fullDays,
+  sessions,
+  isInvestorOnlyUser = false,
+  currentUserId = null,
+  discount_amount = 0,
+  discount_type = 'fixed',
+  custom_total = null,
+  oldItemsMap = {}
+}) => {
+  if (!Array.isArray(requestedEquipmentIds) || requestedEquipmentIds.length === 0) {
+    throw new Error('Vui lòng chọn ít nhất một thiết bị');
+  }
+
+  const equipRes = await client.query(
+    `SELECT id, name, code, category, price_per_day, price_per_session,
+            price_per_day_discount, discount_day_threshold, branch_id, owner_id, condition
+     FROM equipment
+     WHERE id = ANY($1) AND is_deleted = false`,
+    [requestedEquipmentIds]
+  );
+
+  if (equipRes.rows.length === 0) {
+    throw new Error('Không tìm thấy thiết bị đã chọn');
+  }
+
+  const equipById = new Map(equipRes.rows.map(e => [Number(e.id), e]));
+
+  // Verify all requested exist
+  for (const eqId of requestedEquipmentIds) {
+    if (!equipById.has(eqId)) {
+      throw new Error(`Không tìm thấy thiết bị có ID ${eqId}`);
+    }
+  }
+
+  // Check conditions
+  for (const eqId of requestedEquipmentIds) {
+    const eq = equipById.get(eqId);
+    if (eq.condition === 'maintenance') {
+      throw new Error(`Thiết bị "${eq.name}" đang bảo dưỡng, không thể tạo đơn thuê.`);
+    }
+    if (isInvestorOnlyUser && Number(eq.owner_id) !== Number(currentUserId)) {
+      throw new Error(`Bạn chỉ có quyền tạo đơn cho thiết bị thuộc sở hữu của mình (thiết bị "${eq.name}" thuộc chủ khác).`);
+    }
+  }
+
+  // Calculate pricing per item
+  const items = [];
+  let totalSubtotal = 0;
+
+  for (let i = 0; i < requestedEquipmentIds.length; i++) {
+    const eqId = requestedEquipmentIds[i];
+    const eq = equipById.get(eqId);
+    const oldItem = oldItemsMap[eqId];
+
+    const unitPriceDay = oldItem?.unit_price !== undefined && oldItem?.unit_price !== null
+      ? Number(oldItem.unit_price)
+      : Number(eq.price_per_day || 0);
+
+    const unitPriceSession = oldItem?.unit_price_session !== undefined && oldItem?.unit_price_session !== null
+      ? Number(oldItem.unit_price_session)
+      : Number(eq.price_per_session || 0);
+
+    const threshold = oldItem?.discount_day_threshold_snapshot !== undefined && oldItem?.discount_day_threshold_snapshot !== null
+      ? Number(oldItem.discount_day_threshold_snapshot)
+      : (eq.discount_day_threshold ? Number(eq.discount_day_threshold) : null);
+
+    const discountDayPrice = oldItem?.discount_day_price !== undefined && oldItem?.discount_day_price !== null
+      ? Number(oldItem.discount_day_price)
+      : (eq.price_per_day_discount ? Number(eq.price_per_day_discount) : null);
+
+    const usedDiscount = Boolean(threshold && discountDayPrice && fullDays >= threshold);
+    const appliedDayPrice = usedDiscount ? discountDayPrice : unitPriceDay;
+
+    const subtotal = Math.round((fullDays * appliedDayPrice) + (sessions * unitPriceSession));
+    totalSubtotal += subtotal;
+
+    items.push({
+      equipment_id: eq.id,
+      name: eq.name,
+      code: eq.code,
+      category: eq.category,
+      branch_id: eq.branch_id,
+      owner_id: eq.owner_id,
+      unit_price: unitPriceDay,
+      unit_price_session: unitPriceSession,
+      applied_day_price: appliedDayPrice,
+      used_discount_day_price: usedDiscount,
+      discount_day_price: discountDayPrice,
+      discount_day_threshold_snapshot: threshold,
+      rent_days: fullDays,
+      rent_sessions: sessions,
+      subtotal,
+      discount_share: 0,
+      item_total: subtotal,
+      is_primary: i === 0
+    });
+  }
+
+  // Calculate order total & discount
+  let finalTotalPrice = totalSubtotal;
+  let totalDiscount = 0;
+
+  if (custom_total !== undefined && custom_total !== null && custom_total !== '') {
+    finalTotalPrice = Math.max(0, Number(custom_total));
+    totalDiscount = Math.max(0, totalSubtotal - finalTotalPrice);
+  } else {
+    let discountVal = 0;
+    if (discount_type === 'percentage') {
+      discountVal = Math.round(totalSubtotal * (Number(discount_amount || 0) / 100));
+    } else {
+      discountVal = Number(discount_amount || 0);
+    }
+    totalDiscount = Math.min(totalSubtotal, Math.max(0, discountVal));
+    finalTotalPrice = Math.max(0, totalSubtotal - totalDiscount);
+  }
+
+  // Proportionally allocate discount across items
+  if (items.length > 0) {
+    let allocatedDiscount = 0;
+    let maxSubtotalIdx = 0;
+    let maxSubtotalVal = -1;
+
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].subtotal > maxSubtotalVal) {
+        maxSubtotalVal = items[i].subtotal;
+        maxSubtotalIdx = i;
+      }
+      const ratio = totalSubtotal > 0 ? (items[i].subtotal / totalSubtotal) : (1 / items.length);
+      const share = totalDiscount > 0 ? Math.round(totalDiscount * ratio) : 0;
+      items[i].discount_share = share;
+      items[i].item_total = Math.max(0, items[i].subtotal - share);
+      allocatedDiscount += share;
+    }
+
+    // Reconcile rounding diff
+    const diff = totalDiscount - allocatedDiscount;
+    if (diff !== 0 && maxSubtotalIdx >= 0) {
+      items[maxSubtotalIdx].discount_share += diff;
+      items[maxSubtotalIdx].item_total = Math.max(0, items[maxSubtotalIdx].subtotal - items[maxSubtotalIdx].discount_share);
+    }
+
+    // Final check: sum of item_total must equal finalTotalPrice
+    const currentSumTotals = items.reduce((sum, it) => sum + it.item_total, 0);
+    const sumDiff = finalTotalPrice - currentSumTotals;
+    if (sumDiff !== 0 && maxSubtotalIdx >= 0) {
+      items[maxSubtotalIdx].item_total = Math.max(0, items[maxSubtotalIdx].item_total + sumDiff);
+      items[maxSubtotalIdx].discount_share = Math.max(0, items[maxSubtotalIdx].subtotal - items[maxSubtotalIdx].item_total);
+    }
+  }
+
+  return {
+    items,
+    primaryItem: items[0],
+    totalSubtotal,
+    totalDiscount,
+    finalTotalPrice
+  };
 };
 
 // GET rental counts by status
@@ -194,19 +342,30 @@ router.get('/counts', authenticate, async (req, res) => {
 
     if (investorOnly) {
       params.push(req.user.id);
-      whereClause += ` AND EXISTS (
-        SELECT 1 FROM equipment e
-        WHERE e.id = rentals.equipment_id
-          AND e.is_deleted = false
-          AND e.owner_id = $${params.length}
+      whereClause += ` AND (
+        EXISTS (
+          SELECT 1 FROM equipment e
+          WHERE e.id = rentals.equipment_id
+            AND e.is_deleted = false
+            AND e.owner_id = $${params.length}
+        )
+        OR EXISTS (
+          SELECT 1 FROM rental_items ri_inv
+          JOIN equipment e_inv ON e_inv.id = ri_inv.equipment_id
+          WHERE ri_inv.rental_id = rentals.id
+            AND ri_inv.is_deleted = false
+            AND e_inv.is_deleted = false
+            AND e_inv.owner_id = $${params.length}
+        )
       )`;
     } else if (isSalerOnly) {
       params.push(req.user.id);
       whereClause += ` AND user_id = $${params.length}`;
     } else if (driverOnly) {
-      // Driver xem tất cả đơn tại cơ sở mình làm việc
+      // Driver xem tất cả đơn tại cơ sở mình làm việc hoặc được phân công cho mình
       params.push(branchIds.length > 0 ? branchIds : [-1]);
-      whereClause += ` AND (branch_id = ANY($${params.length}) OR pickup_branch_id = ANY($${params.length}) OR return_branch_id = ANY($${params.length}))`;
+      params.push(req.user.id);
+      whereClause += ` AND (branch_id = ANY($${params.length - 1}) OR pickup_branch_id = ANY($${params.length - 1}) OR return_branch_id = ANY($${params.length - 1}) OR handover_user_id = $${params.length})`;
     } else if (!isAdmin) {
       params.push(branchIds.length > 0 ? branchIds : [-1]);
       whereClause += ` AND (branch_id = ANY($${params.length}) OR pickup_branch_id = ANY($${params.length}) OR return_branch_id = ANY($${params.length}))`;
@@ -297,9 +456,10 @@ router.get('/', authenticate, async (req, res) => {
     params.push(req.user.id);
     whereClause += ` AND r.user_id = $${params.length}`;
   } else if (driverOnly) {
-    // Driver xem tất cả đơn tại cơ sở mình làm việc
+    // Driver xem tất cả đơn tại cơ sở mình làm việc hoặc được phân công cho mình
     params.push(branchIds.length > 0 ? branchIds : [-1]);
-    whereClause += ` AND (r.branch_id = ANY($${params.length}) OR r.pickup_branch_id = ANY($${params.length}) OR r.return_branch_id = ANY($${params.length}))`;
+    params.push(req.user.id);
+    whereClause += ` AND (r.branch_id = ANY($${params.length - 1}) OR r.pickup_branch_id = ANY($${params.length - 1}) OR r.return_branch_id = ANY($${params.length - 1}) OR r.handover_user_id = $${params.length})`;
   } else if (!isAdmin) {
     params.push(branchIds.length > 0 ? branchIds : [-1]);
     whereClause += ` AND (r.branch_id = ANY($${params.length}) OR r.pickup_branch_id = ANY($${params.length}) OR r.return_branch_id = ANY($${params.length}))`;
@@ -447,6 +607,35 @@ router.get('/', authenticate, async (req, res) => {
           '[]'::json
         ) as accessories,
         COALESCE(
+          (SELECT json_agg(
+            json_build_object(
+              'id', ri.id,
+              'equipment_id', ri.equipment_id,
+              'name', eq.name,
+              'code', eq.code,
+              'category', eq.category,
+              'branch_id', eq.branch_id,
+              'branch_name', eq_b.name,
+              'unit_price', ri.unit_price,
+              'unit_price_session', ri.unit_price_session,
+              'applied_day_price', ri.applied_day_price,
+              'used_discount_day_price', ri.used_discount_day_price,
+              'discount_day_price', ri.discount_day_price,
+              'discount_day_threshold_snapshot', ri.discount_day_threshold_snapshot,
+              'subtotal', ri.subtotal,
+              'discount_share', ri.discount_share,
+              'item_total', ri.item_total,
+              'is_primary', ri.is_primary,
+              'owner_id', eq.owner_id
+            ) ORDER BY ri.is_primary DESC, ri.id ASC
+          )
+          FROM rental_items ri
+          JOIN equipment eq ON eq.id = ri.equipment_id
+          LEFT JOIN branches eq_b ON eq.branch_id = eq_b.id
+          WHERE ri.rental_id = r.id AND ri.is_deleted = false),
+          '[]'::json
+        ) as items,
+        COALESCE(
           (SELECT json_agg(img.url ORDER BY img.is_primary DESC, img.sort_order ASC, img.id ASC)
            FROM (
              SELECT id, sort_order, is_primary, COALESCE(secure_url, image_url) as url
@@ -491,12 +680,20 @@ router.get('/:id', authenticate, async (req, res) => {
 
     if (isInvestorOnly(req.user)) {
       params.push(req.user.id);
-      accessClause += ` AND e.owner_id = $${params.length}`;
+      accessClause += ` AND (
+        e.owner_id = $${params.length}
+        OR EXISTS (
+          SELECT 1 FROM rental_items ri_inv
+          JOIN equipment eq_inv ON eq_inv.id = ri_inv.equipment_id
+          WHERE ri_inv.rental_id = r.id AND ri_inv.is_deleted = false AND eq_inv.owner_id = $${params.length}
+        )
+      )`;
     } else if (isDriverOnly(req.user)) {
-      // Driver chỉ xem đơn tại cơ sở mình làm việc
+      // Driver chỉ xem đơn tại cơ sở mình làm việc hoặc được phân công cho mình
       const branchIds = req.user.branch_ids || [];
       params.push(branchIds.length > 0 ? branchIds : [-1]);
-      accessClause += ` AND (r.branch_id = ANY($${params.length}) OR r.pickup_branch_id = ANY($${params.length}) OR r.return_branch_id = ANY($${params.length}))`;
+      params.push(req.user.id);
+      accessClause += ` AND (r.branch_id = ANY($${params.length - 1}) OR r.pickup_branch_id = ANY($${params.length - 1}) OR r.return_branch_id = ANY($${params.length - 1}) OR r.handover_user_id = $${params.length})`;
     }
 
     const result = await pool.query(`
@@ -520,6 +717,35 @@ router.get('/:id', authenticate, async (req, res) => {
            WHERE ra.rental_id = r.id AND ra.is_deleted = false),
           '[]'::json
         ) as accessories,
+        COALESCE(
+          (SELECT json_agg(
+            json_build_object(
+              'id', ri.id,
+              'equipment_id', ri.equipment_id,
+              'name', eq.name,
+              'code', eq.code,
+              'category', eq.category,
+              'branch_id', eq.branch_id,
+              'branch_name', eq_b.name,
+              'unit_price', ri.unit_price,
+              'unit_price_session', ri.unit_price_session,
+              'applied_day_price', ri.applied_day_price,
+              'used_discount_day_price', ri.used_discount_day_price,
+              'discount_day_price', ri.discount_day_price,
+              'discount_day_threshold_snapshot', ri.discount_day_threshold_snapshot,
+              'subtotal', ri.subtotal,
+              'discount_share', ri.discount_share,
+              'item_total', ri.item_total,
+              'is_primary', ri.is_primary,
+              'owner_id', eq.owner_id
+            ) ORDER BY ri.is_primary DESC, ri.id ASC
+          )
+          FROM rental_items ri
+          JOIN equipment eq ON eq.id = ri.equipment_id
+          LEFT JOIN branches eq_b ON eq.branch_id = eq_b.id
+          WHERE ri.rental_id = r.id AND ri.is_deleted = false),
+          '[]'::json
+        ) as items,
         COALESCE(
           (SELECT json_agg(img.url ORDER BY img.is_primary DESC, img.sort_order ASC, img.id ASC)
            FROM (
@@ -552,7 +778,8 @@ router.get('/:id', authenticate, async (req, res) => {
 // POST create rental
 router.post('/', authenticate, async (req, res) => {
   const {
-    customer_id, equipment_id, start_date, start_period = 'sáng', end_date, end_period = 'chiều',
+    customer_id, equipment_id, items: reqItems, equipment_ids: reqEquipIds,
+    start_date, start_period = 'sáng', end_date, end_period = 'chiều',
     notes, deposit_amount, accessories, pickup_time, return_time,
     discount_amount = 0, discount_type = 'fixed', code, pickup_branch_id, return_branch_id, branch_id, custom_total,
     paid_amount = 0, user_id, handover_user_id
@@ -566,7 +793,20 @@ router.post('/', authenticate, async (req, res) => {
   if (new Date(mappedStart) > new Date(mappedEnd)) {
     return res.status(400).json({ error: 'Ngày bắt đầu không thể sau ngày kết thúc.' });
   }
-  if (!customer_id || !equipment_id || !start_date || !end_date) {
+
+  // Resolve requested equipment IDs from items, equipment_ids, or equipment_id (+ accessories)
+  let rawEquipmentIds = [];
+  if (Array.isArray(reqItems) && reqItems.length > 0) {
+    rawEquipmentIds = reqItems.map(it => it.equipment_id || it.id).filter(Boolean);
+  } else if (Array.isArray(reqEquipIds) && reqEquipIds.length > 0) {
+    rawEquipmentIds = reqEquipIds.filter(Boolean);
+  } else if (equipment_id) {
+    rawEquipmentIds = [equipment_id, ...(Array.isArray(accessories) ? accessories.map(a => a.id || a.equipment_id).filter(Boolean) : [])];
+  }
+
+  const requestedEquipmentIds = [...new Set(rawEquipmentIds.map(Number))];
+
+  if (!customer_id || requestedEquipmentIds.length === 0 || !start_date || !end_date) {
     return res.status(400).json({ error: 'Vui lòng cung cấp đầy đủ thông tin: Khách hàng, Thiết bị và Thời gian thuê.' });
   }
 
@@ -575,79 +815,33 @@ router.post('/', authenticate, async (req, res) => {
     await client.query('BEGIN');
     const availabilityStart = mappedStart;
     const availabilityEnd = mappedEnd;
-    const available = await checkAvailability(equipment_id, availabilityStart, availabilityEnd);
-    if (!available) {
+
+    const conflictingIds = await findConflictingEquipmentIds(requestedEquipmentIds, availabilityStart, availabilityEnd);
+    if (conflictingIds.length > 0) {
+      const conflictRes = await client.query('SELECT name, code FROM equipment WHERE id = ANY($1)', [conflictingIds]);
+      const conflictNames = conflictRes.rows.map(e => `${e.name} (${e.code || ''})`);
       await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'Thiết bị đã được thuê trong khoảng thời gian này.' });
+      return res.status(400).json({ error: `Thiết bị đã có đơn thuê hoặc đang bảo dưỡng trong khoảng thời gian này: ${conflictNames.join(', ')}` });
     }
+
     const { fullDays, sessions } = calculateDaysSessions(start_date, start_period, end_date, end_period);
-    const equipmentRes = await client.query('SELECT price_per_day, price_per_session, price_per_day_discount, discount_day_threshold, branch_id, owner_id, condition FROM equipment WHERE id = $1 AND is_deleted = false', [equipment_id]);
-    if (equipmentRes.rows.length === 0) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Equipment not found' });
-    }
-    const eq = equipmentRes.rows[0];
-    if (eq.condition === 'maintenance') {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'Thiết bị đang bảo dưỡng, không thể tạo đơn thuê.' });
-    }
-    if (isInvestorOnly(req.user) && Number(eq.owner_id) !== Number(req.user.id)) {
-      await client.query('ROLLBACK');
-      return res.status(403).json({ error: 'Bạn chỉ có quyền tạo đơn cho thiết bị thuộc sở hữu của mình.' });
-    }
-    const unitPriceDay = Number(eq.price_per_day);
-    const unitPriceSession = Number(eq.price_per_session || 0);
-    const originalBranchId = eq.branch_id;
+
+    const pricing = await resolveAndPriceRentalItems(client, {
+      requestedEquipmentIds,
+      fullDays,
+      sessions,
+      isInvestorOnlyUser: isInvestorOnly(req.user),
+      currentUserId: req.user.id,
+      discount_amount,
+      discount_type,
+      custom_total
+    });
+
+    const primaryEquipment = pricing.primaryItem;
+    const finalTotalPrice = pricing.finalTotalPrice;
+    const originalBranchId = primaryEquipment.branch_id;
     const finalPickupBranchId = pickup_branch_id || originalBranchId;
     const finalReturnBranchId = return_branch_id || finalPickupBranchId;
-    // Áp dụng giá ưu đãi nếu đủ ngưỡng
-    const threshold = eq.discount_day_threshold ? Number(eq.discount_day_threshold) : null;
-    const discountDayPrice = eq.price_per_day_discount ? Number(eq.price_per_day_discount) : null;
-    const usedDiscountDayPrice = Boolean(threshold && discountDayPrice && fullDays >= threshold);
-    const effectiveDayPrice = usedDiscountDayPrice ? discountDayPrice : unitPriceDay;
-    let total_price = (fullDays * effectiveDayPrice) + (sessions * unitPriceSession);
-    const processedAccessories = [];
-    if (accessories && Array.isArray(accessories)) {
-      const accessoryIds = accessories.map(a => a.id || a.equipment_id).filter(Boolean);
-      if (accessoryIds.length > 0) {
-        const accRes = await client.query(
-          `SELECT id, name, price_per_day, price_per_session
-           FROM equipment
-           WHERE id = ANY($1)
-             AND is_deleted = false
-             AND COALESCE(condition, '') != 'maintenance'
-             ${isInvestorOnly(req.user) ? 'AND owner_id = $2' : ''}`,
-          isInvestorOnly(req.user) ? [accessoryIds, req.user.id] : [accessoryIds]
-        );
-        const validAccessoryIds = accRes.rows.map((a) => Number(a.id));
-        const conflictingAccessoryIds = await findConflictingAccessoryIds(validAccessoryIds, availabilityStart, availabilityEnd);
-        if (conflictingAccessoryIds.length > 0) {
-          const conflictNames = accRes.rows
-            .filter((a) => conflictingAccessoryIds.includes(Number(a.id)))
-            .map((a) => a.name);
-          await client.query('ROLLBACK');
-          return res.status(400).json({ error: `Phụ kiện đã được thuê trong khoảng thời gian này: ${conflictNames.join(', ')}` });
-        }
-        for (const acc of accRes.rows) {
-          const accDay = Number(acc.price_per_day) || 0;
-          const accSession = Number(acc.price_per_session) || 0;
-          total_price += (fullDays * accDay) + (sessions * accSession);
-          processedAccessories.push({ id: acc.id, name: acc.name, price_per_day: accDay, price_per_session: accSession });
-        }
-      }
-    }
-    // discount
-    let discountVal = 0;
-    if (discount_type === 'percentage') {
-      discountVal = Math.round(total_price * (Number(discount_amount || 0) / 100));
-    } else {
-      discountVal = Number(discount_amount || 0);
-    }
-    total_price = Math.max(0, total_price - discountVal);
-
-    if (custom_total !== undefined && custom_total !== null) {
-      total_price = Number(custom_total);
-    }
 
     const imageInputs = normalizeImagePayload(req.body);
     const requestedUserId = user_id ? Number(user_id) : null;
@@ -673,7 +867,7 @@ router.post('/', authenticate, async (req, res) => {
     const result = await client.query(`
       INSERT INTO rentals (customer_id, equipment_id, branch_id, pickup_branch_id, return_branch_id, start_date, start_period, end_date, end_period, total_price, unit_price, unit_price_session, deposit_amount, status, notes, user_id, pickup_time, return_time, discount_amount, discount_type, order_number, inserted_by, updated_by, paid_amount, applied_day_price, used_discount_day_price, discount_day_price, discount_day_threshold_snapshot, handover_user_id)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'pending', $14, $15, $16, $17, $18, $19, (SELECT COALESCE(MAX(order_number), 0) + 1 FROM rentals WHERE is_deleted = false), $20, $20, $21, $22, $23, $24, $25, $26) RETURNING *
-    `, [customer_id, equipment_id, originalBranchId, finalPickupBranchId, finalReturnBranchId, mappedStart, start_period, mappedEnd, end_period, total_price, unitPriceDay, unitPriceSession, deposit_amount || 0, notes, finalUserId, mappedPickup, mappedReturn, discount_amount, discount_type, req.user.id, paid_amount || 0, effectiveDayPrice, usedDiscountDayPrice, discountDayPrice, threshold, normalizedHandoverUserId]);
+    `, [customer_id, primaryEquipment.equipment_id, originalBranchId, finalPickupBranchId, finalReturnBranchId, mappedStart, start_period, mappedEnd, end_period, finalTotalPrice, primaryEquipment.unit_price, primaryEquipment.unit_price_session, deposit_amount || 0, notes, finalUserId, mappedPickup, mappedReturn, discount_amount, discount_type, req.user.id, paid_amount || 0, primaryEquipment.applied_day_price, primaryEquipment.used_discount_day_price, primaryEquipment.discount_day_price, primaryEquipment.discount_day_threshold_snapshot, normalizedHandoverUserId]);
     const rental = result.rows[0];
     const autoCode = `OD${String(rental.order_number).padStart(7, '0')}`;
     const updateRes = await client.query('UPDATE rentals SET code = $1 WHERE id = $2 RETURNING *', [autoCode, rental.id]);
@@ -683,15 +877,37 @@ router.post('/', authenticate, async (req, res) => {
       await replaceEntityImages(client, 'rentals', finalRental.id, imageInputs, req.user.id);
     }
 
-    for (const acc of processedAccessories) {
-      await client.query('INSERT INTO rental_accessories (rental_id, equipment_id, unit_price, unit_price_session, inserted_by, updated_by) VALUES ($1, $2, $3, $4, $5, $5)', [finalRental.id, acc.id, acc.price_per_day, acc.price_per_session, req.user.id]);
+    // Insert into rental_items
+    for (const item of pricing.items) {
+      await client.query(`
+        INSERT INTO rental_items (
+          rental_id, equipment_id, unit_price, unit_price_session,
+          applied_day_price, used_discount_day_price, discount_day_price, discount_day_threshold_snapshot,
+          rent_days, rent_sessions, subtotal, discount_share, item_total, is_primary,
+          inserted_by, updated_by
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15)
+      `, [
+        finalRental.id, item.equipment_id, item.unit_price, item.unit_price_session,
+        item.applied_day_price, item.used_discount_day_price, item.discount_day_price, item.discount_day_threshold_snapshot,
+        fullDays, sessions, item.subtotal, item.discount_share, item.item_total, item.is_primary,
+        req.user.id
+      ]);
+
+      // Backward compatibility for rental_accessories (if category is Phụ kiện)
+      if (!item.is_primary && item.category === 'Phụ kiện') {
+        await client.query(
+          'INSERT INTO rental_accessories (rental_id, equipment_id, unit_price, unit_price_session, inserted_by, updated_by) VALUES ($1, $2, $3, $4, $5, $5)',
+          [finalRental.id, item.equipment_id, item.unit_price, item.unit_price_session, req.user.id]
+        );
+      }
     }
+
     await client.query('COMMIT');
     // Log activity
     const cust = await pool.query('SELECT name FROM customers WHERE id=$1', [customer_id]);
-    const equip = await pool.query('SELECT name FROM equipment WHERE id=$1', [equipment_id]);
-    await logActivity('CREATE', 'rental', finalRental.id, `Tạo đơn thuê: KH "${cust.rows[0]?.name}" thuê "${equip.rows[0]?.name}" với mã ${autoCode}`, req.user.id);
-    res.status(201).json({ ...finalRental, accessories: accessories || [] });
+    const equipNames = pricing.items.map(it => it.name).join(', ');
+    await logActivity('CREATE', 'rental', finalRental.id, `Tạo đơn thuê: KH "${cust.rows[0]?.name}" thuê "${equipNames}" với mã ${autoCode}`, req.user.id);
+    res.status(201).json({ ...finalRental, items: pricing.items, accessories: accessories || [] });
   } catch (error) {
     await client.query('ROLLBACK');
     if (error instanceof ImageServiceError) {
@@ -699,7 +915,7 @@ router.post('/', authenticate, async (req, res) => {
     }
 
     console.error('Create rental error:', error);
-    res.status(500).json({ error: 'Failed to create rental', details: error.message });
+    res.status(500).json({ error: error.message || 'Failed to create rental', details: error.message });
   } finally {
     client.release();
   }
@@ -709,36 +925,17 @@ router.post('/', authenticate, async (req, res) => {
 router.put('/:id', authenticate, async (req, res) => {
   const { id } = req.params;
   const {
-    customer_id, equipment_id, start_date, start_period = 'sáng', end_date, end_period = 'chiều',
+    customer_id, equipment_id, items: reqItems, equipment_ids: reqEquipIds,
+    start_date, start_period = 'sáng', end_date, end_period = 'chiều',
     status, notes, deposit_amount, accessories, pickup_time, return_time,
     discount_amount, discount_type, code, pickup_branch_id, return_branch_id, branch_id, custom_total,
     paid_amount, user_id, handover_user_id
   } = req.body;
 
-  const mappedStart = getDateTimeForPeriod(start_date, start_period);
-  const mappedEnd = getDateTimeForPeriod(end_date, end_period);
-  const mappedPickup = formatLocalToGMT(pickup_time);
-  const mappedReturn = formatLocalToGMT(return_time);
-
-  if (new Date(mappedStart) > new Date(mappedEnd)) {
-    return res.status(400).json({ error: 'Ngày bắt đầu không thể sau ngày kết thúc.' });
-  }
-  if (!customer_id || !equipment_id || !start_date || !end_date) {
-    return res.status(400).json({ error: 'Vui lòng cung cấp đầy đủ thông tin: Khách hàng, Thiết bị và Thời gian thuê.' });
-  }
-
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const availabilityStart = mappedStart;
-    const availabilityEnd = mappedEnd;
-    if (status !== 'cancelled' && status !== 'completed') {
-      const available = await checkAvailability(equipment_id, availabilityStart, availabilityEnd, id);
-      if (!available) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({ error: 'Thiết bị đã được thuê trong khoảng thời gian này.' });
-      }
-    }
+
     // fetch old record
     const oldResult = await client.query(`
       SELECT r.*, c.name as customer_name, e.name as equipment_name, e.price_per_day, e.owner_id as equipment_owner_id,
@@ -754,108 +951,105 @@ router.put('/:id', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'Rental not found' });
     }
     const old = oldResult.rows[0];
-    if (isInvestorOnly(req.user) && Number(old.equipment_owner_id) !== Number(req.user.id)) {
+
+    const finalStartDate = start_date || old.start_date;
+    const finalStartPeriod = start_period || old.start_period || 'sáng';
+    const finalEndDate = end_date || old.end_date;
+    const finalEndPeriod = end_period || old.end_period || 'chiều';
+
+    const mappedStart = getDateTimeForPeriod(finalStartDate, finalStartPeriod);
+    const mappedEnd = getDateTimeForPeriod(finalEndDate, finalEndPeriod);
+    const mappedPickup = formatLocalToGMT(pickup_time !== undefined ? pickup_time : old.pickup_time);
+    const mappedReturn = formatLocalToGMT(return_time !== undefined ? return_time : old.return_time);
+
+    if (new Date(mappedStart) > new Date(mappedEnd)) {
       await client.query('ROLLBACK');
-      return res.status(403).json({ error: 'Bạn chỉ có quyền chỉnh sửa đơn thuê của thiết bị thuộc sở hữu của mình.' });
+      return res.status(400).json({ error: 'Ngày bắt đầu không thể sau ngày kết thúc.' });
     }
+
+    // Fetch existing rental_items for this rental
+    const existingItemsRes = await client.query(
+      `SELECT ri.*, e.owner_id FROM rental_items ri JOIN equipment e ON e.id = ri.equipment_id WHERE ri.rental_id = $1 AND ri.is_deleted = false ORDER BY ri.is_primary DESC, ri.id ASC`,
+      [id]
+    );
+    const existingItems = existingItemsRes.rows;
+    const oldItemsMap = {};
+    for (const it of existingItems) {
+      oldItemsMap[it.equipment_id] = it;
+    }
+
+    if (isInvestorOnly(req.user)) {
+      const userOwnsAnyOld = existingItems.some(it => Number(it.owner_id) === Number(req.user.id)) || Number(old.equipment_owner_id) === Number(req.user.id);
+      if (!userOwnsAnyOld) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Bạn chỉ có quyền chỉnh sửa đơn thuê của thiết bị thuộc sở hữu của mình.' });
+      }
+    }
+
     // ownership check for saler
     if (hasRole(req.user, 'saler') && !hasRole(req.user, 'admin', 'camera_manager', 'investor') && old.user_id !== req.user.id) {
       await client.query('ROLLBACK');
       return res.status(403).json({ error: 'Bạn không có quyền chỉnh sửa đơn thuê của người khác.' });
     }
+
     // status restriction for saler
     const isSalerOnly = hasRole(req.user, 'saler') && !hasRole(req.user, 'admin', 'camera_manager', 'investor');
     const statusToSave = isSalerOnly ? old.status : (status || old.status);
-    // Determine unit prices
-    let unitPriceDay, unitPriceSession, equipDiscountThreshold, equipDiscountDayPrice;
-    const equipRes = await client.query('SELECT price_per_day, price_per_session, price_per_day_discount, discount_day_threshold, branch_id, owner_id, condition FROM equipment WHERE id = $1 AND is_deleted = false', [equipment_id]);
-    if (equipRes.rows.length === 0) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Equipment not found' });
-    }
-    const eqRow = equipRes.rows[0];
-    if (Number(old.equipment_id) !== Number(equipment_id) && eqRow.condition === 'maintenance') {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'Thiết bị đang bảo dưỡng, không thể tạo đơn thuê.' });
-    }
-    if (isInvestorOnly(req.user) && Number(eqRow.owner_id) !== Number(req.user.id)) {
-      await client.query('ROLLBACK');
-      return res.status(403).json({ error: 'Bạn chỉ có quyền chuyển đơn sang thiết bị thuộc sở hữu của mình.' });
-    }
-    const originalBranchId = eqRow.branch_id;
-    const finalPickupBranchId = pickup_branch_id || old.pickup_branch_id || originalBranchId;
-    const finalReturnBranchId = return_branch_id || old.return_branch_id || finalPickupBranchId;
 
-    if (Number(old.equipment_id) === Number(equipment_id)) {
-      unitPriceDay = old.unit_price !== null && old.unit_price !== undefined
-        ? Number(old.unit_price)
-        : Number(eqRow.price_per_day);
-      unitPriceSession = Number(eqRow.price_per_session || 0);
-    } else {
-      unitPriceDay = Number(eqRow.price_per_day);
-      unitPriceSession = Number(eqRow.price_per_session || 0);
+    // Resolve requested equipment IDs
+    let rawEquipmentIds = [];
+    if (Array.isArray(reqItems) && reqItems.length > 0) {
+      rawEquipmentIds = reqItems.map(it => it.equipment_id || it.id).filter(Boolean);
+    } else if (Array.isArray(reqEquipIds) && reqEquipIds.length > 0) {
+      rawEquipmentIds = reqEquipIds.filter(Boolean);
+    } else if (equipment_id) {
+      rawEquipmentIds = [equipment_id, ...(Array.isArray(accessories) ? accessories.map(a => a.id || a.equipment_id).filter(Boolean) : [])];
+    } else if (existingItems.length > 0) {
+      rawEquipmentIds = existingItems.map(it => it.equipment_id);
+    } else if (old.equipment_id) {
+      rawEquipmentIds = [old.equipment_id];
     }
-    if (Number(old.equipment_id) === Number(equipment_id)) {
-      equipDiscountThreshold = old.discount_day_threshold_snapshot !== null && old.discount_day_threshold_snapshot !== undefined
-        ? Number(old.discount_day_threshold_snapshot)
-        : (eqRow.discount_day_threshold ? Number(eqRow.discount_day_threshold) : null);
-      equipDiscountDayPrice = old.discount_day_price !== null && old.discount_day_price !== undefined
-        ? Number(old.discount_day_price)
-        : (eqRow.price_per_day_discount ? Number(eqRow.price_per_day_discount) : null);
-    } else {
-      equipDiscountThreshold = eqRow.discount_day_threshold ? Number(eqRow.discount_day_threshold) : null;
-      equipDiscountDayPrice = eqRow.price_per_day_discount ? Number(eqRow.price_per_day_discount) : null;
+
+    const requestedEquipmentIds = [...new Set(rawEquipmentIds.map(Number))];
+    if (requestedEquipmentIds.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Vui lòng chọn ít nhất một thiết bị.' });
     }
-    const { fullDays, sessions } = calculateDaysSessions(start_date, start_period, end_date, end_period);
-    // Áp dụng giá ưu đãi nếu đủ ngưỡng
-    const usedDiscountDayPrice = Boolean(equipDiscountThreshold && equipDiscountDayPrice && fullDays >= equipDiscountThreshold);
-    const effectiveDayPrice = usedDiscountDayPrice ? equipDiscountDayPrice : unitPriceDay;
-    let total_price = (fullDays * effectiveDayPrice) + (sessions * unitPriceSession);
-    // accessories cost
-    const processedAccessories = [];
-    if (accessories && Array.isArray(accessories)) {
-      const accessoryIds = accessories.map(a => a.id || a.equipment_id).filter(Boolean);
-      if (accessoryIds.length > 0) {
-        const accRes = await client.query(
-          `SELECT id, name, price_per_day, price_per_session
-           FROM equipment
-           WHERE id = ANY($1)
-             AND is_deleted = false
-             AND COALESCE(condition, '') != 'maintenance'
-             ${isInvestorOnly(req.user) ? 'AND owner_id = $2' : ''}`,
-          isInvestorOnly(req.user) ? [accessoryIds, req.user.id] : [accessoryIds]
-        );
-        const validAccessoryIds = accRes.rows.map((a) => Number(a.id));
-        const conflictingAccessoryIds = await findConflictingAccessoryIds(validAccessoryIds, availabilityStart, availabilityEnd, id);
-        if (conflictingAccessoryIds.length > 0) {
-          const conflictNames = accRes.rows
-            .filter((a) => conflictingAccessoryIds.includes(Number(a.id)))
-            .map((a) => a.name);
-          await client.query('ROLLBACK');
-          return res.status(400).json({ error: `Phụ kiện đã được thuê trong khoảng thời gian này: ${conflictNames.join(', ')}` });
-        }
-        for (const acc of accRes.rows) {
-          const accDay = Number(acc.price_per_day) || 0;
-          const accSession = Number(acc.price_per_session) || 0;
-          total_price += (fullDays * accDay) + (sessions * accSession);
-          processedAccessories.push({ id: acc.id, name: acc.name, price_per_day: accDay, price_per_session: accSession });
-        }
+
+    const availabilityStart = mappedStart;
+    const availabilityEnd = mappedEnd;
+    if (statusToSave !== 'cancelled' && statusToSave !== 'completed') {
+      const conflictingIds = await findConflictingEquipmentIds(requestedEquipmentIds, availabilityStart, availabilityEnd, id);
+      if (conflictingIds.length > 0) {
+        const conflictRes = await client.query('SELECT name, code FROM equipment WHERE id = ANY($1)', [conflictingIds]);
+        const conflictNames = conflictRes.rows.map(e => `${e.name} (${e.code || ''})`);
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `Thiết bị đã có đơn thuê hoặc đang bảo dưỡng trong khoảng thời gian này: ${conflictNames.join(', ')}` });
       }
     }
-    // discount handling
-    let discountVal = 0;
-    const finalDiscountAmount = discount_amount !== undefined ? discount_amount : old.discount_amount;
-    const finalDiscountType = discount_type || old.discount_type;
-    if (finalDiscountType === 'percentage') {
-      discountVal = Math.round(total_price * (Number(finalDiscountAmount || 0) / 100));
-    } else {
-      discountVal = Number(finalDiscountAmount || 0);
-    }
-    total_price = Math.max(0, total_price - discountVal);
 
-    if (custom_total !== undefined && custom_total !== null) {
-      total_price = Number(custom_total);
-    }
+    const { fullDays, sessions } = calculateDaysSessions(finalStartDate, finalStartPeriod, finalEndDate, finalEndPeriod);
+
+    const finalDiscountAmount = discount_amount !== undefined ? discount_amount : old.discount_amount;
+    const finalDiscountType = discount_type || old.discount_type || 'fixed';
+
+    const pricing = await resolveAndPriceRentalItems(client, {
+      requestedEquipmentIds,
+      fullDays,
+      sessions,
+      isInvestorOnlyUser: isInvestorOnly(req.user),
+      currentUserId: req.user.id,
+      discount_amount: finalDiscountAmount,
+      discount_type: finalDiscountType,
+      custom_total: custom_total !== undefined ? custom_total : (old.custom_total ?? null),
+      oldItemsMap
+    });
+
+    const primaryEquipment = pricing.primaryItem;
+    const total_price = pricing.finalTotalPrice;
+    const originalBranchId = primaryEquipment.branch_id;
+    const finalPickupBranchId = pickup_branch_id || old.pickup_branch_id || originalBranchId;
+    const finalReturnBranchId = return_branch_id || old.return_branch_id || finalPickupBranchId;
 
     const imageInputs = normalizeImagePayload(req.body);
     const requestedUserId = user_id ? Number(user_id) : null;
@@ -882,41 +1076,75 @@ router.put('/:id', authenticate, async (req, res) => {
       }
     }
 
-    // Track actual return time when marked as completed
-    let returnedAtClause = '';
-    if (statusToSave === 'completed' && old.status !== 'completed') {
-      returnedAtClause = ', returned_at=NOW()';
-    }
+    const returnedAtClause = (statusToSave === 'completed' && old.status !== 'completed') ? ', returned_at = NOW()' : '';
+    const pickedUpAtClause = (statusToSave === 'active' && old.status === 'pending') ? ', picked_up_at = NOW()' : '';
 
-    // Track actual pickup time when starting the rental
-    let pickedUpAtClause = '';
-    if (statusToSave === 'active' && old.status === 'pending') {
-      pickedUpAtClause = ', picked_up_at=NOW()';
-    }
-
-    const result = await client.query(`
+    const updateQuery = `
       UPDATE rentals
-      SET customer_id=$1, equipment_id=$2, start_date=$3, start_period=$4, end_date=$5, end_period=$6, status=$7, notes=$8, total_price=$9, deposit_amount=$10, unit_price=$11, unit_price_session=$12, pickup_time=$13, return_time=$14, discount_amount=$15, discount_type=$16, code=$17, branch_id=$20, pickup_branch_id=$21, updated_at=NOW(), updated_by=$19, paid_amount=$22, user_id=$23, applied_day_price=$24, used_discount_day_price=$25, discount_day_price=$26, discount_day_threshold_snapshot=$27, return_branch_id=$28, handover_user_id=$29${returnedAtClause}${pickedUpAtClause}
-      WHERE id=$18 RETURNING *
-    `, [customer_id, equipment_id, mappedStart, start_period, mappedEnd, end_period, statusToSave, notes, total_price, deposit_amount || 0, unitPriceDay, unitPriceSession, mappedPickup, mappedReturn, finalDiscountAmount, finalDiscountType, code || old.code, id, req.user.id, originalBranchId, finalPickupBranchId, paid_amount || 0, finalUserId, effectiveDayPrice, usedDiscountDayPrice, equipDiscountDayPrice, equipDiscountThreshold, finalReturnBranchId, finalHandoverUserId]);
+      SET customer_id = $1, equipment_id = $2, start_date = $3, start_period = $4, end_date = $5, end_period = $6,
+          status = $7, notes = $8, deposit_amount = $9, total_price = $10, unit_price = $11, unit_price_session = $12,
+          pickup_time = $13, return_time = $14, discount_amount = $15, discount_type = $16,
+          pickup_branch_id = $17, return_branch_id = $18, branch_id = $19, paid_amount = $20,
+          applied_day_price = $21, used_discount_day_price = $22, discount_day_price = $23, discount_day_threshold_snapshot = $24,
+          user_id = $25, handover_user_id = $26, updated_at = NOW(), updated_by = $27
+          ${returnedAtClause}
+          ${pickedUpAtClause}
+      WHERE id = $28
+      RETURNING *
+    `;
+    const updateValues = [
+      customer_id || old.customer_id, primaryEquipment.equipment_id, mappedStart, finalStartPeriod, mappedEnd, finalEndPeriod,
+      statusToSave, notes !== undefined ? notes : old.notes, deposit_amount !== undefined ? deposit_amount : old.deposit_amount,
+      total_price, primaryEquipment.unit_price, primaryEquipment.unit_price_session,
+      mappedPickup, mappedReturn, finalDiscountAmount, finalDiscountType,
+      finalPickupBranchId, finalReturnBranchId, originalBranchId,
+      paid_amount !== undefined ? paid_amount : (old.paid_amount || 0),
+      primaryEquipment.applied_day_price, primaryEquipment.used_discount_day_price, primaryEquipment.discount_day_price, primaryEquipment.discount_day_threshold_snapshot,
+      finalUserId, finalHandoverUserId, req.user.id, id
+    ];
+
+    const result = await client.query(updateQuery, updateValues);
     const rental = result.rows[0];
+    const updatedRental = rental;
+
     if (imageInputs.length > 0) {
       await replaceEntityImages(client, 'rentals', id, imageInputs, req.user.id);
     }
-    // update accessories mapping (soft delete old ones then insert new ones or just hard delete if they are just mapping)
-    // The user said no hard delete, so we update is_deleted on accessories.
+
+    // Soft delete old rental_items and insert new ones
+    await client.query('UPDATE rental_items SET is_deleted = true, updated_at = NOW(), updated_by = $1 WHERE rental_id = $2 AND is_deleted = false', [req.user.id, id]);
+
+    for (const item of pricing.items) {
+      await client.query(`
+        INSERT INTO rental_items (
+          rental_id, equipment_id, unit_price, unit_price_session,
+          applied_day_price, used_discount_day_price, discount_day_price, discount_day_threshold_snapshot,
+          rent_days, rent_sessions, subtotal, discount_share, item_total, is_primary,
+          inserted_by, updated_by
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15)
+      `, [
+        id, item.equipment_id, item.unit_price, item.unit_price_session,
+        item.applied_day_price, item.used_discount_day_price, item.discount_day_price, item.discount_day_threshold_snapshot,
+        fullDays, sessions, item.subtotal, item.discount_share, item.item_total, item.is_primary,
+        req.user.id
+      ]);
+    }
+
+    // Soft delete old rental_accessories
     await client.query('UPDATE rental_accessories SET is_deleted = true, updated_at = NOW(), updated_by = $1 WHERE rental_id = $2', [req.user.id, id]);
-    for (const acc of processedAccessories) {
-      await client.query('INSERT INTO rental_accessories (rental_id, equipment_id, unit_price, unit_price_session, inserted_by, updated_by) VALUES ($1, $2, $3, $4, $5, $5)', [id, acc.id, acc.price_per_day, acc.price_per_session, req.user.id]);
+    for (const item of pricing.items) {
+      if (!item.is_primary && item.category === 'Phụ kiện') {
+        await client.query(
+          'INSERT INTO rental_accessories (rental_id, equipment_id, unit_price, unit_price_session, inserted_by, updated_by) VALUES ($1, $2, $3, $4, $5, $5)',
+          [id, item.equipment_id, item.unit_price, item.unit_price_session, req.user.id]
+        );
+      }
     }
 
     if (statusToSave === 'completed') {
-      // Khi đơn mới chuyển sang completed → luôn forceRecalc để đảm bảo ledger chính xác
-      // (tránh trường hợp đơn từng completed trước đó → ledger cũ bị stale)
       if (old.status !== 'completed') {
         await ensureCommissionSnapshotForCompletedRental(client, Number(id), req.user.id, { forceRecalc: true });
       } else {
-        // Đơn đã completed từ trước → chỉ recalc nếu thay đổi saler, driver hoặc total_price
         const commissionFieldsChanged =
           Number(old.user_id || 0) !== Number(finalUserId || 0) ||
           Number(old.handover_user_id || 0) !== Number(finalHandoverUserId || 0) ||
@@ -974,7 +1202,9 @@ router.put('/:id', authenticate, async (req, res) => {
     const newReturnBranchName = newReturnBranchRes.rows[0]?.name || 'Không';
 
     const fmtDate = (d) => {
+      if (!d) return '';
       const dt = new Date(d);
+      if (isNaN(dt.getTime())) return '';
       return `${String(dt.getUTCDate()).padStart(2, '0')}/${String(dt.getUTCMonth() + 1).padStart(2, '0')}/${dt.getUTCFullYear()}`;
     };
     const STATUS_VN = { pending: 'Chờ giao', active: 'Đang thuê', completed: 'Hoàn thành', cancelled: 'Đã hủy' };
@@ -998,9 +1228,11 @@ router.put('/:id', authenticate, async (req, res) => {
       const desc = `Cập nhật đơn thuê ${rental.code} (KH: ${newCustName}): ${changes.join(', ')}`;
       await logActivity('UPDATE', 'rental', rental.id, desc, req.user.id);
     }
-    res.json(rental);
+    res.json({ ...rental, items: pricing.items, accessories: accessories || [] });
   } catch (error) {
-    await client.query('ROLLBACK');
+    try {
+      await client.query('ROLLBACK');
+    } catch (_) {}
     if (error instanceof ImageServiceError) {
       return res.status(error.statusCode).json({ error: error.message });
     }
@@ -1024,16 +1256,21 @@ router.patch('/:id/status', authenticate, requireStatusManager, async (req, res)
   try {
     await client.query('BEGIN');
     const oldResult = await client.query(`
-      SELECT r.status, r.code, r.handover_user_id, e.owner_id
+      SELECT r.status, r.code, r.handover_user_id, e.owner_id,
+        EXISTS (
+          SELECT 1 FROM rental_items ri
+          JOIN equipment eq ON eq.id = ri.equipment_id
+          WHERE ri.rental_id = r.id AND ri.is_deleted = false AND eq.owner_id = $2
+        ) as is_owner_of_any_item
       FROM rentals r
       JOIN equipment e ON r.equipment_id = e.id
       WHERE r.id=$1 AND r.is_deleted = false
-    `, [id]);
+    `, [id, req.user.id]);
     if (oldResult.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Rental not found' });
     }
-    if (isInvestorOnly(req.user) && Number(oldResult.rows[0].owner_id) !== Number(req.user.id)) {
+    if (isInvestorOnly(req.user) && !oldResult.rows[0].is_owner_of_any_item && Number(oldResult.rows[0].owner_id) !== Number(req.user.id)) {
       await client.query('ROLLBACK');
       return res.status(403).json({ error: 'Bạn chỉ có quyền cập nhật đơn thuê của thiết bị thuộc sở hữu của mình.' });
     }
@@ -1087,14 +1324,19 @@ router.post('/:id/recalculate-commission', authenticate, async (req, res) => {
 
     const rentalResult = await client.query(
       `
-        SELECT r.id, r.code, r.status, e.owner_id
+        SELECT r.id, r.code, r.status, e.owner_id,
+          EXISTS (
+            SELECT 1 FROM rental_items ri
+            JOIN equipment eq ON eq.id = ri.equipment_id
+            WHERE ri.rental_id = r.id AND ri.is_deleted = false AND eq.owner_id = $2
+          ) as is_owner_of_any_item
         FROM rentals r
         JOIN equipment e ON r.equipment_id = e.id
         WHERE r.id = $1
           AND r.is_deleted = false
         LIMIT 1
       `,
-      [rentalId]
+      [rentalId, req.user.id]
     );
 
     if (rentalResult.rows.length === 0) {
@@ -1103,7 +1345,7 @@ router.post('/:id/recalculate-commission', authenticate, async (req, res) => {
     }
 
     const rental = rentalResult.rows[0];
-    if (isInvestorOnly(req.user) && Number(rental.owner_id) !== Number(req.user.id)) {
+    if (isInvestorOnly(req.user) && !rental.is_owner_of_any_item && Number(rental.owner_id) !== Number(req.user.id)) {
       await client.query('ROLLBACK');
       return res.status(403).json({ error: 'Bạn chỉ có quyền tính lại hoa hồng cho đơn thuê của thiết bị thuộc sở hữu của mình.' });
     }
@@ -1141,6 +1383,8 @@ router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
     await client.query('UPDATE financial_transactions SET is_deleted = true, updated_at = NOW(), updated_by = $1 WHERE rental_id = $2', [req.user.id, id]);
     // Soft delete rental accessories
     await client.query('UPDATE rental_accessories SET is_deleted = true, updated_at = NOW(), updated_by = $1 WHERE rental_id = $2', [req.user.id, id]);
+    // Soft delete rental items
+    await client.query('UPDATE rental_items SET is_deleted = true, updated_at = NOW(), updated_by = $1 WHERE rental_id = $2', [req.user.id, id]);
 
     const result = await client.query('UPDATE rentals SET is_deleted = true, updated_at = NOW(), updated_by = $1 WHERE id = $2 RETURNING code', [req.user.id, id]);
     if (result.rows.length === 0) {

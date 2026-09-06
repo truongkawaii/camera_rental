@@ -11,23 +11,33 @@ export default defineConfig({
         enabled: true
       },
       manifest: {
-        name: 'Camera Rental',
-        short_name: 'Rental',
-        description: 'Camera Rental Management System',
-        theme_color: '#ffffff',
+        name: 'SnapPro - Hệ Thống Quản Lý Thuê Máy Ảnh',
+        short_name: 'SnapPro',
+        description: 'Hệ thống quản lý cho thuê máy ảnh SnapPro chuyên nghiệp',
+        theme_color: '#f97316',
         background_color: '#ffffff',
         display: 'standalone',
+        orientation: 'portrait-primary',
+        start_url: '/',
+        scope: '/',
         icons: [
           {
-            src: 'pwa-192x192.png',
+            src: '/pwa-192x192.png',
             sizes: '192x192',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any maskable'
           },
           {
-            src: 'pwa-512x512.png',
+            src: '/pwa-512x512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any maskable'
+          },
+          {
+            src: '/apple-touch-icon.png',
+            sizes: '180x180',
+            type: 'image/png',
+            purpose: 'any'
           }
         ]
       },

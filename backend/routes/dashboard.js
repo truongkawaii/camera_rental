@@ -100,6 +100,7 @@ const summaryHandler = async (req, res) => {
     const branchIds = req.user.branch_ids || [];
     let branchFilter = '';
     const statsParams = [periodStartISO, periodEndISO];
+    const isDriver = hasRole(req.user, 'driver') && !isAdmin && !investorOnly;
     if (investorOnly) {
       statsParams.push(req.user.id);
       branchFilter = ` AND EXISTS (
@@ -108,6 +109,10 @@ const summaryHandler = async (req, res) => {
           AND e.is_deleted = false
           AND e.owner_id = $${statsParams.length}
       )`;
+    } else if (isDriver) {
+      statsParams.push(branchIds.length > 0 ? branchIds : [-1]);
+      statsParams.push(req.user.id);
+      branchFilter = ` AND (branch_id = ANY($${statsParams.length - 1}) OR pickup_branch_id = ANY($${statsParams.length - 1}) OR return_branch_id = ANY($${statsParams.length - 1}) OR handover_user_id = $${statsParams.length})`;
     } else if (!isAdmin) {
       statsParams.push(branchIds.length > 0 ? branchIds : [-1]);
       branchFilter = ` AND (branch_id = ANY($${statsParams.length}) OR pickup_branch_id = ANY($${statsParams.length}) OR return_branch_id = ANY($${statsParams.length}))`;
@@ -146,6 +151,10 @@ const summaryHandler = async (req, res) => {
     if (investorOnly) {
       taskParams.push(req.user.id);
       taskBranchFilter = ` AND e.owner_id = $${taskParams.length}`;
+    } else if (isDriver) {
+      taskParams.push(branchIds.length > 0 ? branchIds : [-1]);
+      taskParams.push(req.user.id);
+      taskBranchFilter = ` AND (r.branch_id = ANY($${taskParams.length - 1}) OR r.pickup_branch_id = ANY($${taskParams.length - 1}) OR r.return_branch_id = ANY($${taskParams.length - 1}) OR r.handover_user_id = $${taskParams.length})`;
     } else if (!isAdmin) {
       taskParams.push(branchIds.length > 0 ? branchIds : [-1]);
       taskBranchFilter = ` AND (r.branch_id = ANY($${taskParams.length}) OR r.pickup_branch_id = ANY($${taskParams.length}) OR r.return_branch_id = ANY($${taskParams.length}))`;
@@ -156,6 +165,10 @@ const summaryHandler = async (req, res) => {
     if (investorOnly) {
       overdueParams.push(req.user.id);
       overdueBranchFilter = ` AND e.owner_id = $1`;
+    } else if (isDriver) {
+      overdueParams.push(branchIds.length > 0 ? branchIds : [-1]);
+      overdueParams.push(req.user.id);
+      overdueBranchFilter = ` AND (r.branch_id = ANY($1) OR r.pickup_branch_id = ANY($1) OR r.return_branch_id = ANY($1) OR r.handover_user_id = $2)`;
     } else if (!isAdmin) {
       overdueParams.push(branchIds.length > 0 ? branchIds : [-1]);
       overdueBranchFilter = ` AND (r.branch_id = ANY($1) OR r.pickup_branch_id = ANY($1) OR r.return_branch_id = ANY($1))`;
@@ -175,6 +188,35 @@ const summaryHandler = async (req, res) => {
         COALESCE(hu.full_name, hu.username) as handover_user_name,
         c.name as customer_name, c.phone as customer_phone,
         e.name as equipment_name, e.code as equipment_code,
+        COALESCE(
+          (SELECT json_agg(
+            json_build_object(
+              'id', ri.id,
+              'equipment_id', ri.equipment_id,
+              'name', eq.name,
+              'code', eq.code,
+              'category', eq.category,
+              'branch_id', eq.branch_id,
+              'branch_name', eq_b.name,
+              'unit_price', ri.unit_price,
+              'unit_price_session', ri.unit_price_session,
+              'applied_day_price', ri.applied_day_price,
+              'used_discount_day_price', ri.used_discount_day_price,
+              'discount_day_price', ri.discount_day_price,
+              'discount_day_threshold_snapshot', ri.discount_day_threshold_snapshot,
+              'subtotal', ri.subtotal,
+              'discount_share', ri.discount_share,
+              'item_total', ri.item_total,
+              'is_primary', ri.is_primary
+            ) ORDER BY ri.is_primary DESC, ri.id ASC
+          )
+          FROM rental_items ri
+          JOIN equipment eq ON ri.equipment_id = eq.id
+          LEFT JOIN branches eq_b ON eq.branch_id = eq_b.id
+          WHERE ri.rental_id = r.id AND ri.is_deleted = false
+          ),
+          '[]'::json
+        ) as items,
         COALESCE(
           (SELECT json_agg(img.url ORDER BY img.is_primary DESC, img.sort_order ASC, img.id ASC)
            FROM (
@@ -227,6 +269,35 @@ const summaryHandler = async (req, res) => {
         c.name as customer_name, c.phone as customer_phone,
         e.name as equipment_name, e.code as equipment_code,
         COALESCE(
+          (SELECT json_agg(
+            json_build_object(
+              'id', ri.id,
+              'equipment_id', ri.equipment_id,
+              'name', eq.name,
+              'code', eq.code,
+              'category', eq.category,
+              'branch_id', eq.branch_id,
+              'branch_name', eq_b.name,
+              'unit_price', ri.unit_price,
+              'unit_price_session', ri.unit_price_session,
+              'applied_day_price', ri.applied_day_price,
+              'used_discount_day_price', ri.used_discount_day_price,
+              'discount_day_price', ri.discount_day_price,
+              'discount_day_threshold_snapshot', ri.discount_day_threshold_snapshot,
+              'subtotal', ri.subtotal,
+              'discount_share', ri.discount_share,
+              'item_total', ri.item_total,
+              'is_primary', ri.is_primary
+            ) ORDER BY ri.is_primary DESC, ri.id ASC
+          )
+          FROM rental_items ri
+          JOIN equipment eq ON ri.equipment_id = eq.id
+          LEFT JOIN branches eq_b ON eq.branch_id = eq_b.id
+          WHERE ri.rental_id = r.id AND ri.is_deleted = false
+          ),
+          '[]'::json
+        ) as items,
+        COALESCE(
           (SELECT json_agg(img.url ORDER BY img.is_primary DESC, img.sort_order ASC, img.id ASC)
            FROM (
              SELECT id, sort_order, is_primary, COALESCE(secure_url, image_url) as url
@@ -277,6 +348,35 @@ const summaryHandler = async (req, res) => {
         c.name as customer_name, c.phone as customer_phone,
         e.name as equipment_name, e.code as equipment_code,
         COALESCE(
+          (SELECT json_agg(
+            json_build_object(
+              'id', ri.id,
+              'equipment_id', ri.equipment_id,
+              'name', eq.name,
+              'code', eq.code,
+              'category', eq.category,
+              'branch_id', eq.branch_id,
+              'branch_name', eq_b.name,
+              'unit_price', ri.unit_price,
+              'unit_price_session', ri.unit_price_session,
+              'applied_day_price', ri.applied_day_price,
+              'used_discount_day_price', ri.used_discount_day_price,
+              'discount_day_price', ri.discount_day_price,
+              'discount_day_threshold_snapshot', ri.discount_day_threshold_snapshot,
+              'subtotal', ri.subtotal,
+              'discount_share', ri.discount_share,
+              'item_total', ri.item_total,
+              'is_primary', ri.is_primary
+            ) ORDER BY ri.is_primary DESC, ri.id ASC
+          )
+          FROM rental_items ri
+          JOIN equipment eq ON ri.equipment_id = eq.id
+          LEFT JOIN branches eq_b ON eq.branch_id = eq_b.id
+          WHERE ri.rental_id = r.id AND ri.is_deleted = false
+          ),
+          '[]'::json
+        ) as items,
+        COALESCE(
           (SELECT json_agg(img.url ORDER BY img.is_primary DESC, img.sort_order ASC, img.id ASC)
            FROM (
              SELECT id, sort_order, is_primary, COALESCE(secure_url, image_url) as url
@@ -318,6 +418,10 @@ const summaryHandler = async (req, res) => {
     if (investorOnly) {
       latePickupParams.push(req.user.id);
       latePickupBranchFilter = ` AND e.owner_id = $1`;
+    } else if (isDriver) {
+      latePickupParams.push(branchIds.length > 0 ? branchIds : [-1]);
+      latePickupParams.push(req.user.id);
+      latePickupBranchFilter = ` AND (r.branch_id = ANY($1) OR r.pickup_branch_id = ANY($1) OR r.return_branch_id = ANY($1) OR r.handover_user_id = $2)`;
     } else if (!isAdmin) {
       latePickupParams.push(branchIds.length > 0 ? branchIds : [-1]);
       latePickupBranchFilter = ` AND (r.branch_id = ANY($1) OR r.pickup_branch_id = ANY($1) OR r.return_branch_id = ANY($1))`;
@@ -337,6 +441,35 @@ const summaryHandler = async (req, res) => {
         COALESCE(hu.full_name, hu.username) as handover_user_name,
         c.name as customer_name, c.phone as customer_phone,
         e.name as equipment_name, e.code as equipment_code,
+        COALESCE(
+          (SELECT json_agg(
+            json_build_object(
+              'id', ri.id,
+              'equipment_id', ri.equipment_id,
+              'name', eq.name,
+              'code', eq.code,
+              'category', eq.category,
+              'branch_id', eq.branch_id,
+              'branch_name', eq_b.name,
+              'unit_price', ri.unit_price,
+              'unit_price_session', ri.unit_price_session,
+              'applied_day_price', ri.applied_day_price,
+              'used_discount_day_price', ri.used_discount_day_price,
+              'discount_day_price', ri.discount_day_price,
+              'discount_day_threshold_snapshot', ri.discount_day_threshold_snapshot,
+              'subtotal', ri.subtotal,
+              'discount_share', ri.discount_share,
+              'item_total', ri.item_total,
+              'is_primary', ri.is_primary
+            ) ORDER BY ri.is_primary DESC, ri.id ASC
+          )
+          FROM rental_items ri
+          JOIN equipment eq ON ri.equipment_id = eq.id
+          LEFT JOIN branches eq_b ON eq.branch_id = eq_b.id
+          WHERE ri.rental_id = r.id AND ri.is_deleted = false
+          ),
+          '[]'::json
+        ) as items,
         COALESCE(
           (SELECT json_agg(img.url ORDER BY img.is_primary DESC, img.sort_order ASC, img.id ASC)
            FROM (

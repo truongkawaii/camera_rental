@@ -16,8 +16,16 @@ router.get('/equipment/:id', authenticate, async (req, res) => {
         c.name as customer_name, false as is_maintenance
       FROM rentals r
       JOIN customers c ON r.customer_id = c.id AND c.is_deleted = false
-      JOIN equipment e ON r.equipment_id = e.id AND e.is_deleted = false
-      WHERE r.equipment_id = $1 
+      JOIN LATERAL (
+        SELECT ri.equipment_id
+        FROM rental_items ri
+        WHERE ri.rental_id = r.id AND ri.is_deleted = false
+        UNION
+        SELECT r.equipment_id
+        WHERE NOT EXISTS (SELECT 1 FROM rental_items ri2 WHERE ri2.rental_id = r.id AND ri2.is_deleted = false)
+      ) eq_rented ON true
+      JOIN equipment e ON eq_rented.equipment_id = e.id AND e.is_deleted = false
+      WHERE eq_rented.equipment_id = $1 
         AND r.is_deleted = false
         AND r.status != 'cancelled'
         ${isInvestorOnly(req.user) ? 'AND e.owner_id = $2' : ''}
@@ -48,7 +56,8 @@ router.get('/rentals', authenticate, async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT 
-        r.id, r.start_date, r.start_period, r.end_date, r.end_period, r.status, r.equipment_id,
+        r.id, r.start_date, r.start_period, r.end_date, r.end_period, r.status,
+        eq_rented.equipment_id,
         r.user_id, r.manager_id, r.handover_user_id, r.total_price, r.deposit_amount, r.paid_amount,
         r.pickup_time, r.return_time, r.code, r.order_number,
         c.name as customer_name, c.phone as customer_phone,
@@ -64,7 +73,15 @@ router.get('/rentals', authenticate, async (req, res) => {
         r.notes as maintenance_notes
       FROM rentals r
       JOIN customers c ON r.customer_id = c.id AND c.is_deleted = false
-      JOIN equipment e ON r.equipment_id = e.id AND e.is_deleted = false
+      JOIN LATERAL (
+        SELECT ri.equipment_id
+        FROM rental_items ri
+        WHERE ri.rental_id = r.id AND ri.is_deleted = false
+        UNION
+        SELECT r.equipment_id
+        WHERE NOT EXISTS (SELECT 1 FROM rental_items ri2 WHERE ri2.rental_id = r.id AND ri2.is_deleted = false)
+      ) eq_rented ON true
+      JOIN equipment e ON eq_rented.equipment_id = e.id AND e.is_deleted = false
       LEFT JOIN users u ON r.user_id = u.id
       LEFT JOIN users m ON r.manager_id = m.id
       LEFT JOIN branches b ON r.branch_id = b.id

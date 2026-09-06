@@ -1,23 +1,38 @@
-import React from 'react';
-import { Edit2, Trash2, Package, Building2, ArrowDown, ArrowUp, ArrowUpDown, UserRound, Copy } from 'lucide-react';
-import Pagination from '../../../components/Pagination';
-import { ConditionBadge } from '../utils';
-import LazyImage from '../../../components/LazyImage';
-import { getFirstImage } from '../../../utils/formatters';
-import CustomSelect from '../../../components/CustomSelect';
+import React from "react";
+import {
+  Edit2,
+  Trash2,
+  Package,
+  Building2,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  UserRound,
+  Copy,
+  ArrowRightLeft,
+  MapPin,
+} from "lucide-react";
+import Pagination from "../../../components/Pagination";
+import { ConditionBadge } from "../utils";
+import LazyImage from "../../../components/LazyImage";
+import { getFirstImage } from "../../../utils/formatters";
+import CustomSelect from "../../../components/CustomSelect";
 
-import EquipmentCard from './EquipmentCard';
+import EquipmentCard from "./EquipmentCard";
 
 const getVisibilityFlags = (statsVisibility) => ({
-  hideSensitiveStats: statsVisibility === 'sensitive',
-  hideMetrics: statsVisibility === 'sensitive' || statsVisibility === 'metrics-only',
+  hideSensitiveStats: statsVisibility === "sensitive",
+  hideMetrics:
+    statsVisibility === "sensitive" || statsVisibility === "metrics-only",
 });
 
 /* ── Shared empty / loading states ─────────────────────────────── */
 const LoadingState = () => (
   <div className="flex flex-col items-center gap-3 py-14">
     <div className="w-8 h-8 border-[3px] border-orange-500 border-t-transparent rounded-full animate-spin" />
-    <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Đang tải...</span>
+    <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest">
+      Đang tải...
+    </span>
   </div>
 );
 
@@ -32,9 +47,18 @@ const EmptyState = () => (
 );
 
 /* ── Desktop Table Row ─────────────────────────────────────────── */
-const EquipmentRow = ({ item, canManage, statsVisibility, onEdit, onDelete, onDuplicate }) => {
-  const td = 'px-4 py-4 bg-white border-y border-slate-100 group-hover:border-blue-100 transition-colors';
-  const { hideSensitiveStats, hideMetrics } = getVisibilityFlags(statsVisibility);
+const EquipmentRow = ({
+  item,
+  canManage,
+  statsVisibility,
+  onEdit,
+  onDelete,
+  onDuplicate,
+}) => {
+  const td =
+    "px-4 py-4 bg-white border-y border-slate-100 group-hover:border-blue-100 transition-colors";
+  const { hideSensitiveStats, hideMetrics } =
+    getVisibilityFlags(statsVisibility);
 
   return (
     <tr className="group hover:shadow-md transition-all rounded-2xl">
@@ -51,7 +75,9 @@ const EquipmentRow = ({ item, canManage, statsVisibility, onEdit, onDelete, onDu
       </td>
 
       {/* Tên */}
-      <td className={`${td} 2xl:border-l-0 border-l rounded-l-2xl 2xl:rounded-l-none`}>
+      <td
+        className={`${td} 2xl:border-l-0 border-l rounded-l-2xl 2xl:rounded-l-none`}
+      >
         <p className="font-semibold text-slate-900 text-[13.5px] leading-tight group-hover:text-orange-500 transition-colors">
           {item.name}
         </p>
@@ -81,34 +107,64 @@ const EquipmentRow = ({ item, canManage, statsVisibility, onEdit, onDelete, onDu
       {/* Cơ sở */}
       {!hideSensitiveStats && (
         <>
-      <td className={`hidden xl:table-cell ${td}`}>
-        {item.branch_name ? (
-          <div className="flex items-center gap-2 text-slate-600">
-            <span className="p-1 bg-violet-50 rounded-lg text-violet-500 group-hover:bg-violet-100 transition-colors">
-              <Building2 size={13} />
-            </span>
-            <span className="text-[12px] font-semibold">{item.branch_name}</span>
-          </div>
-        ) : (
-          <span className="text-slate-300 italic text-[11px]">Chưa gán</span>
-        )}
-      </td>
+          <td className={`hidden xl:table-cell ${td}`}>
+            {item.branch_name ? (
+              <div className="flex items-center gap-2 text-slate-600">
+                <span className="p-1 bg-violet-50 rounded-lg text-violet-500 group-hover:bg-violet-100 transition-colors">
+                  <Building2 size={13} />
+                </span>
+                <span className="text-[12px] font-semibold">
+                  {item.branch_name}
+                </span>
+              </div>
+            ) : (
+              <span className="text-slate-300 italic text-[11px]">
+                Chưa gán
+              </span>
+            )}
+          </td>
 
-      {/* Chủ sở hữu */}
-      <td className={`hidden 2xl:table-cell ${td}`}>
-        {item.owner_name || item.owner_username ? (
-          <div className="flex items-center gap-2 text-slate-600">
-            <span className="p-1 bg-emerald-50 rounded-lg text-emerald-500 group-hover:bg-emerald-100 transition-colors">
-              <UserRound size={13} />
-            </span>
-            <span className="text-[12px] font-semibold">{item.owner_name || item.owner_username}</span>
-          </div>
-        ) : (
-          <span className="text-slate-300 italic text-[11px]">Chưa gán</span>
-        )}
-      </td>
+          {/* Vị trí hiện tại (điều chuyển) */}
+          <td className={`hidden xl:table-cell ${td}`}>
+            {item.current_branch_id &&
+            item.current_branch_id !== item.branch_id ? (
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 shadow-xs">
+                <ArrowRightLeft size={12} className="text-amber-600 shrink-0" />
+                <div className="flex flex-col">
+                  <span className="text-[12px] font-bold leading-tight">
+                    {item.current_branch_name}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 text-slate-500">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                <span className="text-[12px] text-slate-600 font-medium">
+                  Tại CS gốc
+                </span>
+              </div>
+            )}
+          </td>
 
-      {/* Mã TB */}
+          {/* Chủ sở hữu */}
+          <td className={`hidden 2xl:table-cell ${td}`}>
+            {item.owner_name || item.owner_username ? (
+              <div className="flex items-center gap-2 text-slate-600">
+                <span className="p-1 bg-emerald-50 rounded-lg text-emerald-500 group-hover:bg-emerald-100 transition-colors">
+                  <UserRound size={13} />
+                </span>
+                <span className="text-[12px] font-semibold">
+                  {item.owner_name || item.owner_username}
+                </span>
+              </div>
+            ) : (
+              <span className="text-slate-300 italic text-[11px]">
+                Chưa gán
+              </span>
+            )}
+          </td>
+
+          {/* Mã TB */}
         </>
       )}
 
@@ -121,13 +177,17 @@ const EquipmentRow = ({ item, canManage, statsVisibility, onEdit, onDelete, onDu
       {/* Giá thuê */}
       <td className={`${td} whitespace-nowrap`}>
         <p className="text-[11px] font-semibold text-slate-900 whitespace-nowrap">
-          {Number(item.price_per_day).toLocaleString('vi-VN')}{' '}
-          <span className="text-[9px] text-slate-400 font-normal uppercase">/ ngày</span>
+          {Number(item.price_per_day).toLocaleString("vi-VN")}{" "}
+          <span className="text-[9px] text-slate-400 font-normal uppercase">
+            / ngày
+          </span>
         </p>
         {item.price_per_session && (
           <p className="text-[9px] font-medium text-slate-400 whitespace-nowrap">
-            {Number(item.price_per_session).toLocaleString('vi-VN')}{' '}
-            <span className="text-[9px] text-slate-400 font-normal uppercase">/ buổi</span>
+            {Number(item.price_per_session).toLocaleString("vi-VN")}{" "}
+            <span className="text-[9px] text-slate-400 font-normal uppercase">
+              / buổi
+            </span>
           </p>
         )}
       </td>
@@ -137,8 +197,10 @@ const EquipmentRow = ({ item, canManage, statsVisibility, onEdit, onDelete, onDu
         {item.price_per_day_discount ? (
           <>
             <p className="text-[11px] font-semibold text-emerald-600 whitespace-nowrap">
-              {Number(item.price_per_day_discount).toLocaleString('vi-VN')}{' '}
-              <span className="text-[9px] text-emerald-400 font-normal uppercase">/ ngày</span>
+              {Number(item.price_per_day_discount).toLocaleString("vi-VN")}{" "}
+              <span className="text-[9px] text-emerald-400 font-normal uppercase">
+                / ngày
+              </span>
             </p>
             {item.discount_day_threshold && (
               <p className="text-[9px] font-medium text-emerald-500/70 whitespace-nowrap">
@@ -154,11 +216,13 @@ const EquipmentRow = ({ item, canManage, statsVisibility, onEdit, onDelete, onDu
       {!hideMetrics && (
         <td className={`${td} text-center whitespace-nowrap`}>
           <div className="flex flex-col items-center justify-center">
-            <p className="text-[11px] font-bold text-slate-700">{item.rental_count || 0}</p>
+            <p className="text-[11px] font-bold text-slate-700">
+              {item.rental_count || 0}
+            </p>
             <p className="text-[9px] font-medium text-slate-400 mt-0.5">
-              {item.total_rentals > 0 
-                ? `${((item.rental_count / item.total_rentals) * 100).toFixed(1)}%` 
-                : '0%'}
+              {item.total_rentals > 0
+                ? `${((item.rental_count / item.total_rentals) * 100).toFixed(1)}%`
+                : "0%"}
             </p>
           </div>
         </td>
@@ -167,7 +231,7 @@ const EquipmentRow = ({ item, canManage, statsVisibility, onEdit, onDelete, onDu
       {!hideMetrics && (
         <td className={`${td} text-right whitespace-nowrap`}>
           <p className="text-[11px] font-bold text-slate-700">
-            {Math.round(item.total_sales || 0).toLocaleString('vi-VN')}đ
+            {Math.round(item.total_sales || 0).toLocaleString("vi-VN")}đ
           </p>
         </td>
       )}
@@ -175,14 +239,16 @@ const EquipmentRow = ({ item, canManage, statsVisibility, onEdit, onDelete, onDu
       {!hideMetrics && (
         <td className={`${td} text-right whitespace-nowrap`}>
           <p className="text-[11px] font-bold text-indigo-600">
-            {Math.round(item.total_revenue || 0).toLocaleString('vi-VN')}đ
+            {Math.round(item.total_revenue || 0).toLocaleString("vi-VN")}đ
           </p>
         </td>
       )}
 
       {/* Tình trạng */}
       <td className={`${td} text-center`}>
-        <ConditionBadge condition={item.is_under_maintenance ? 'maintenance' : item.condition} />
+        <ConditionBadge
+          condition={item.is_under_maintenance ? "maintenance" : item.condition}
+        />
       </td>
 
       {/* Hành động */}
@@ -234,57 +300,77 @@ const EquipmentList = ({
   month,
   sortBy,
   sortOrder,
-  statsVisibility = 'full',
+  statsVisibility = "full",
   onSort,
 }) => {
-  const { hideSensitiveStats, hideMetrics } = getVisibilityFlags(statsVisibility);
+  const { hideSensitiveStats, hideMetrics } =
+    getVisibilityFlags(statsVisibility);
   const SortIcon = ({ column }) => {
-    if (sortBy !== column) return <ArrowUpDown size={12} className="opacity-30 inline-block ml-1" />;
-    if (sortOrder === 'ASC') return <ArrowUp size={12} className="text-primary inline-block ml-1" />;
+    if (sortBy !== column)
+      return <ArrowUpDown size={12} className="opacity-30 inline-block ml-1" />;
+    if (sortOrder === "ASC")
+      return <ArrowUp size={12} className="text-primary inline-block ml-1" />;
     return <ArrowDown size={12} className="text-primary inline-block ml-1" />;
   };
 
-  const thClass = "px-4 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-[0.18em]";
+  const thClass =
+    "px-4 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-[0.18em]";
   const sortableThClass = `${thClass} cursor-pointer hover:text-slate-600 transition-colors select-none group`;
-  
-  const displayMonth = month ? ` (T${month.split('-')[1]})` : '';
+
+  const displayMonth = month ? ` (T${month.split("-")[1]})` : "";
 
   const sortOptions = [
-    { value: 'name', label: 'Tên thiết bị' },
-    { value: 'brand', label: 'Thương hiệu' },
-    { value: 'model', label: 'Model' },
-    { value: 'category', label: 'Danh mục' },
-    { value: 'branch', label: 'Cơ sở' },
-    { value: 'owner', label: 'Chủ sở hữu' },
-    { value: 'code', label: 'Mã TB' },
-    { value: 'price', label: 'Giá thuê' },
-    { value: 'discount_price', label: 'Giá ưu đãi' },
-    { value: 'rentals', label: `Lượt thuê${displayMonth}` },
-    { value: 'sales', label: `Doanh số${displayMonth}` },
-    { value: 'revenue', label: `Doanh thu${displayMonth}` },
+    { value: "name", label: "Tên thiết bị" },
+    { value: "brand", label: "Thương hiệu" },
+    { value: "model", label: "Model" },
+    { value: "category", label: "Danh mục" },
+    { value: "branch", label: "Cơ sở gốc" },
+    { value: "current_branch", label: "Vị trí hiện tại" },
+    { value: "owner", label: "Chủ sở hữu" },
+    { value: "code", label: "Mã TB" },
+    { value: "price", label: "Giá thuê" },
+    { value: "discount_price", label: "Giá ưu đãi" },
+    { value: "rentals", label: `Lượt thuê${displayMonth}` },
+    { value: "sales", label: `Doanh số${displayMonth}` },
+    { value: "revenue", label: `Doanh thu${displayMonth}` },
   ];
-  
+
   const hiddenSortValues = new Set();
   if (hideSensitiveStats) {
-    ['branch', 'owner', 'rentals', 'sales', 'revenue'].forEach((value) => hiddenSortValues.add(value));
+    [
+      "branch",
+      "current_branch",
+      "owner",
+      "rentals",
+      "sales",
+      "revenue",
+    ].forEach((value) => hiddenSortValues.add(value));
   }
-  if (statsVisibility === 'metrics-only') {
-    ['rentals', 'sales', 'revenue'].forEach((value) => hiddenSortValues.add(value));
+  if (statsVisibility === "metrics-only") {
+    ["rentals", "sales", "revenue"].forEach((value) =>
+      hiddenSortValues.add(value),
+    );
   }
-  const visibleSortOptions = sortOptions.filter((option) => !hiddenSortValues.has(option.value));
-  const tableColumnCount = 13 - (hideSensitiveStats ? 2 : 0) - (hideMetrics ? 3 : 0);
+  const visibleSortOptions = sortOptions.filter(
+    (option) => !hiddenSortValues.has(option.value),
+  );
+  const tableColumnCount =
+    14 - (hideSensitiveStats ? 3 : 0) - (hideMetrics ? 3 : 0);
   return (
     <div className="bg-white rounded-lg shadow overflow-hidden">
-
       {/* Mobile Sort Controls */}
       <div className="block xl:hidden px-4 pt-4 pb-2 border-b border-slate-100">
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Sắp xếp:</span>
+          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
+            Sắp xếp:
+          </span>
           <div className="relative flex-1">
             <CustomSelect
               options={visibleSortOptions}
               value={sortBy}
-              onChange={(val) => { if (val !== sortBy) onSort(val); }}
+              onChange={(val) => {
+                if (val !== sortBy) onSort(val);
+              }}
               placeholder="Sắp xếp"
               labelField="label"
               valueField="value"
@@ -293,11 +379,15 @@ const EquipmentList = ({
               buttonClassName="!h-[35px] !rounded-xl !py-0 !shadow-sm [&>span]:text-sm [&>span]:font-medium"
             />
           </div>
-          <button 
+          <button
             onClick={() => onSort(sortBy)}
             className="h-[35px] w-[35px] shrink-0 flex items-center justify-center border border-slate-200 rounded-xl bg-slate-50 text-slate-500 hover:text-primary hover:border-primary/30 hover:bg-primary/5 transition-colors shadow-sm"
           >
-            {sortOrder === 'ASC' ? <ArrowUp size={18} /> : <ArrowDown size={18} />}
+            {sortOrder === "ASC" ? (
+              <ArrowUp size={18} />
+            ) : (
+              <ArrowDown size={18} />
+            )}
           </button>
         </div>
       </div>
@@ -305,9 +395,13 @@ const EquipmentList = ({
       {/* Mobile Cards */}
       <div className="block xl:hidden p-4">
         {loading ? (
-          <div className="md:col-span-2"><LoadingState /></div>
+          <div className="md:col-span-2">
+            <LoadingState />
+          </div>
         ) : equipment.length === 0 ? (
-          <div className="md:col-span-2"><EmptyState /></div>
+          <div className="md:col-span-2">
+            <EmptyState />
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {equipment.map((item) => (
@@ -330,40 +424,78 @@ const EquipmentList = ({
         <table className="w-full border-separate border-spacing-y-2 min-w-[800px] px-4">
           <thead>
             <tr>
-              <th className={`hidden 2xl:table-cell text-left ${thClass}`}>Hình Ảnh</th>
-              <th className={`text-left ${sortableThClass}`} onClick={() => onSort('name')}>
+              <th className={`hidden 2xl:table-cell text-left ${thClass}`}>
+                Hình Ảnh
+              </th>
+              <th
+                className={`text-left ${sortableThClass}`}
+                onClick={() => onSort("name")}
+              >
                 Tên Thiết Bị <SortIcon column="name" />
               </th>
-              <th className={`text-left ${sortableThClass}`} onClick={() => onSort('category')}>
+              <th
+                className={`text-left ${sortableThClass}`}
+                onClick={() => onSort("category")}
+              >
                 Danh Mục <SortIcon column="category" />
               </th>
-              <th className={`${hideSensitiveStats ? 'hidden' : 'hidden xl:table-cell'} text-left ${sortableThClass}`} onClick={() => onSort('branch')}>
-                Cơ Sở <SortIcon column="branch" />
+              <th
+                className={`${hideSensitiveStats ? "hidden" : "hidden xl:table-cell"} text-left ${sortableThClass}`}
+                onClick={() => onSort("branch")}
+              >
+                Cơ Sở Gốc <SortIcon column="branch" />
               </th>
-              <th className={`${hideSensitiveStats ? 'hidden' : 'hidden 2xl:table-cell'} text-left ${sortableThClass}`} onClick={() => onSort('owner')}>
+              <th
+                className={`${hideSensitiveStats ? "hidden" : "hidden xl:table-cell"} text-left ${sortableThClass}`}
+                onClick={() => onSort("current_branch")}
+              >
+                Vị Trí Hiện Tại <SortIcon column="current_branch" />
+              </th>
+              <th
+                className={`${hideSensitiveStats ? "hidden" : "hidden 2xl:table-cell"} text-left ${sortableThClass}`}
+                onClick={() => onSort("owner")}
+              >
                 Chủ Sở Hữu <SortIcon column="owner" />
               </th>
-              <th className={`text-left ${sortableThClass}`} onClick={() => onSort('code')}>
+              <th
+                className={`text-left ${sortableThClass}`}
+                onClick={() => onSort("code")}
+              >
                 Mã TB <SortIcon column="code" />
               </th>
-              <th className={`text-left ${sortableThClass}`} onClick={() => onSort('price')}>
+              <th
+                className={`text-left ${sortableThClass}`}
+                onClick={() => onSort("price")}
+              >
                 Giá Thuê <SortIcon column="price" />
               </th>
-              <th className={`text-left ${sortableThClass}`} onClick={() => onSort('discount_price')}>
+              <th
+                className={`text-left ${sortableThClass}`}
+                onClick={() => onSort("discount_price")}
+              >
                 Giá Ưu Đãi <SortIcon column="discount_price" />
               </th>
               {!hideMetrics && (
-                <th className={`text-center ${sortableThClass}`} onClick={() => onSort('rentals')}>
+                <th
+                  className={`text-center ${sortableThClass}`}
+                  onClick={() => onSort("rentals")}
+                >
                   Lượt Thuê{displayMonth} <SortIcon column="rentals" />
                 </th>
               )}
               {!hideMetrics && (
-                <th className={`text-right ${sortableThClass}`} onClick={() => onSort('sales')}>
+                <th
+                  className={`text-right ${sortableThClass}`}
+                  onClick={() => onSort("sales")}
+                >
                   Doanh Số{displayMonth} <SortIcon column="sales" />
                 </th>
               )}
               {!hideMetrics && (
-                <th className={`text-right ${sortableThClass}`} onClick={() => onSort('revenue')}>
+                <th
+                  className={`text-right ${sortableThClass}`}
+                  onClick={() => onSort("revenue")}
+                >
                   Doanh Thu{displayMonth} <SortIcon column="revenue" />
                 </th>
               )}
@@ -373,9 +505,17 @@ const EquipmentList = ({
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={tableColumnCount} className="py-16"><LoadingState /></td></tr>
+              <tr>
+                <td colSpan={tableColumnCount} className="py-16">
+                  <LoadingState />
+                </td>
+              </tr>
             ) : equipment.length === 0 ? (
-              <tr><td colSpan={tableColumnCount} className="py-6"><EmptyState /></td></tr>
+              <tr>
+                <td colSpan={tableColumnCount} className="py-6">
+                  <EmptyState />
+                </td>
+              </tr>
             ) : (
               equipment.map((item) => (
                 <EquipmentRow
@@ -395,7 +535,11 @@ const EquipmentList = ({
 
       {/* Pagination */}
       <div className="px-6 py-4 border-t border-slate-100">
-        <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={onPageChange} />
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={onPageChange}
+        />
       </div>
     </div>
   );

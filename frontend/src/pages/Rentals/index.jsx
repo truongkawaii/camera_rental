@@ -16,7 +16,7 @@ import DeleteModal from './components/DeleteModal';
 import { formatDateTimeForInput, getAllImages } from '../../utils/formatters';
 
 const EMPTY_FORM = {
-  customer_id: '', equipment_id: '',
+  customer_id: '', equipment_id: '', items: [],
   start_date: '', start_period: 'sáng',
   end_date: '', end_period: 'chiều',
   status: 'pending', notes: '', deposit_amount: 0, accessories: [],
@@ -174,8 +174,9 @@ const Rentals = () => {
       setSaving(false);
       return;
     }
-    if (!formData.equipment_id) {
-      toast.error("Vui lòng chọn thiết bị chính");
+    const hasEquipment = (Array.isArray(formData.items) && formData.items.length > 0) || formData.equipment_id;
+    if (!hasEquipment) {
+      toast.error("Vui lòng chọn ít nhất một thiết bị");
       setSaving(false);
       return;
     }
@@ -193,6 +194,10 @@ const Rentals = () => {
     setSaving(true);
     try {
       let currentFormData = { ...formData };
+      if (Array.isArray(formData.items) && formData.items.length > 0) {
+        currentFormData.items = formData.items;
+        currentFormData.equipment_id = formData.items[0].equipment_id || formData.items[0].id;
+      }
 
       // Handle new customer
       if (isCreatingCustomer) {
@@ -335,9 +340,48 @@ const Rentals = () => {
       ? { id: cust.id, name: cust.name || '', phone: cust.phone || '', email: cust.email || '' }
       : (item.customer_id ? { id: item.customer_id, name: item.customer_name || '', phone: item.customer_phone || '', email: '' } : null)
     );
+    const initialItems = Array.isArray(item.items) && item.items.length > 0
+      ? item.items.map(it => ({
+          equipment_id: it.equipment_id || it.id,
+          id: it.equipment_id || it.id,
+          name: it.name,
+          code: it.code,
+          category: it.category,
+          branch_id: it.branch_id,
+          branch_name: it.branch_name,
+          price_per_day: it.applied_day_price ?? it.unit_price,
+          price_per_session: it.unit_price_session,
+          unit_price: it.unit_price,
+          applied_day_price: it.applied_day_price,
+          unit_price_session: it.unit_price_session,
+          discount_day_price: it.discount_day_price,
+          discount_day_threshold_snapshot: it.discount_day_threshold_snapshot,
+          used_discount_day_price: it.used_discount_day_price,
+          subtotal: it.subtotal,
+          discount_share: it.discount_share,
+          item_total: it.item_total,
+          is_primary: it.is_primary
+        }))
+      : (item.equipment_id ? [{
+          equipment_id: item.equipment_id,
+          id: item.equipment_id,
+          name: item.equipment_name,
+          code: item.equipment_code,
+          price_per_day: item.applied_day_price ?? item.unit_price,
+          price_per_session: item.unit_price_session,
+          unit_price: item.unit_price,
+          applied_day_price: item.applied_day_price,
+          unit_price_session: item.unit_price_session,
+          discount_day_price: item.discount_day_price,
+          discount_day_threshold_snapshot: item.discount_day_threshold_snapshot,
+          used_discount_day_price: item.used_discount_day_price,
+          is_primary: true
+        }] : []);
+
     setFormData({
       customer_id: item.customer_id,
-      equipment_id: item.equipment_id,
+      equipment_id: item.equipment_id || initialItems[0]?.equipment_id || '',
+      items: initialItems,
       start_date: item.start_date?.split('T')[0] || '',
       start_period: item.start_period || 'sáng',
       end_date: item.end_date?.split('T')[0] || '',
