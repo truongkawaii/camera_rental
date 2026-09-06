@@ -105,9 +105,14 @@ const CustomSelect = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const filteredOptions = normalizedOptions.filter(opt => 
-    opt[labelField]?.toString().toLowerCase().includes(search.toLowerCase())
-  );
+  const removeAccents = (str) => str ? str.normalize('NFD').replace(/[\u0300-\u036f]/g, '') : '';
+  const filteredOptions = normalizedOptions.filter(opt => {
+    if (!search) return true;
+    const searchStr = removeAccents(search.trim().toLowerCase());
+    const searchTerms = searchStr.split(/\s+/);
+    const label = removeAccents((opt[labelField] || '').toString().toLowerCase());
+    return searchTerms.every(term => label.includes(term));
+  });
 
   const colors = ACCENTS[accent] || ACCENTS.primary;
 
