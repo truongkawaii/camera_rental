@@ -27,18 +27,25 @@ export default function PWAInstallButton({ sidebarOpen, mobileMenuOpen }) {
       // Prevent the mini-infobar from appearing on mobile
       e.preventDefault();
       // Stash the event so it can be triggered later.
+      window.deferredPrompt = e;
       setDeferredPrompt(e);
     };
 
     // Listen for appinstalled
     const handleAppInstalled = () => {
       setIsInstalled(true);
+      window.deferredPrompt = null;
       setDeferredPrompt(null);
       setShowModal(false);
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
+
+    // If it already fired before component mounted
+    if (window.deferredPrompt) {
+      setDeferredPrompt(window.deferredPrompt);
+    }
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -52,12 +59,20 @@ export default function PWAInstallButton({ sidebarOpen, mobileMenuOpen }) {
       return;
     }
 
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') {
-        setIsInstalled(true);
-        setDeferredPrompt(null);
+    const promptToUse = window.deferredPrompt || deferredPrompt;
+
+    if (promptToUse) {
+      try {
+        await promptToUse.prompt();
+        const { outcome } = await promptToUse.userChoice;
+        if (outcome === 'accepted') {
+          setIsInstalled(true);
+          window.deferredPrompt = null;
+          setDeferredPrompt(null);
+        }
+      } catch (err) {
+        console.error("Install prompt error:", err);
+        setShowModal(true);
       }
     } else {
       // If prompt is not available (iOS, or desktop manual install)
