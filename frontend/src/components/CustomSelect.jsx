@@ -149,6 +149,16 @@ const CustomSelect = ({
                 placeholder="Tìm kiếm..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (filteredOptions.length === 1) {
+                      onChange(filteredOptions[0][valueField]);
+                      setIsOpen(false);
+                      setSearch("");
+                    }
+                  }
+                }}
               />
             </div>
           )}
