@@ -1126,7 +1126,7 @@ const RentalList = React.memo(({
                                   </div>
                                   <div className="flex items-center gap-1 text-[10px] text-indigo-500 font-medium">
                                     <Home size={9} className="text-indigo-400 flex-shrink-0" />
-                                    <span className="truncate">{it.branch_name || rental.original_branch_name || 'Hệ thống'}</span>
+                                    <span className="truncate">{rental.pickup_branch_name || it.branch_name || rental.original_branch_name || 'Hệ thống'}</span>
                                   </div>
                                 </div>
                               </div>
@@ -1141,7 +1141,7 @@ const RentalList = React.memo(({
                               <span className="text-[9.5px] font-semibold text-orange-500/60 uppercase tracking-wider block mb-0.5 truncate">#{rental.equipment_code}</span>
                               <div className="flex items-center gap-1 text-[10.5px] text-indigo-500 font-semibold">
                                 <Home size={10} className="text-indigo-400 flex-shrink-0" />
-                                <span className="truncate">{rental.original_branch_name || 'Hệ thống'}</span>
+                                <span className="truncate">{rental.pickup_branch_name || rental.original_branch_name || 'Hệ thống'}</span>
                               </div>
                             </div>
                           </div>
