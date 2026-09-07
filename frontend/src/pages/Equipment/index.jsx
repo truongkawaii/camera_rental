@@ -161,7 +161,7 @@ const Equipment = ({ initialTab }) => {
 
   const loadAllTemplates = useCallback(async () => {
     try {
-      const res = await getEquipment(1, 100, '', 'name', 'ASC');
+      const res = await getEquipment(1, 1000, '', 'name', 'ASC');
       setAllTemplates(res.data?.data || []);
     } catch (err) {
       console.error('Failed to load templates:', err);
@@ -755,7 +755,7 @@ const Equipment = ({ initialTab }) => {
         <ToastContainer toasts={toasts} onClose={removeToast} />
       </>
         ) : (
-          <MaintenanceTab equipmentList={equipment} />
+          <MaintenanceTab equipmentList={allTemplates} />
         )}
       </div>
     </div>
