@@ -359,13 +359,11 @@ router.get('/counts', authenticate, async (req, res) => {
         )
       )`;
     } else if (isSalerOnly) {
-      params.push(req.user.id);
-      whereClause += ` AND user_id = $${params.length}`;
+      // Nhân viên bán hàng xem toàn bộ đơn
     } else if (driverOnly) {
-      // Driver xem tất cả đơn tại cơ sở mình làm việc hoặc được phân công cho mình
+      // Driver chỉ xem đơn tại cơ sở mình làm việc
       params.push(branchIds.length > 0 ? branchIds : [-1]);
-      params.push(req.user.id);
-      whereClause += ` AND (branch_id = ANY($${params.length - 1}) OR pickup_branch_id = ANY($${params.length - 1}) OR return_branch_id = ANY($${params.length - 1}) OR handover_user_id = $${params.length})`;
+      whereClause += ` AND (branch_id = ANY($${params.length}) OR pickup_branch_id = ANY($${params.length}) OR return_branch_id = ANY($${params.length}))`;
     } else if (!isAdmin) {
       params.push(branchIds.length > 0 ? branchIds : [-1]);
       whereClause += ` AND (branch_id = ANY($${params.length}) OR pickup_branch_id = ANY($${params.length}) OR return_branch_id = ANY($${params.length}))`;
@@ -453,13 +451,12 @@ router.get('/', authenticate, async (req, res) => {
     params.push(req.user.id);
     whereClause += ` AND e.owner_id = $${params.length}`;
   } else if (isSalerOnly) {
-    params.push(req.user.id);
-    whereClause += ` AND r.user_id = $${params.length}`;
+    // Nhân viên bán hàng thấy toàn bộ đơn (theo yêu cầu mới)
+    // Không giới hạn whereClause
   } else if (driverOnly) {
-    // Driver xem tất cả đơn tại cơ sở mình làm việc hoặc được phân công cho mình
+    // Driver chỉ xem đơn tại cơ sở mình làm việc
     params.push(branchIds.length > 0 ? branchIds : [-1]);
-    params.push(req.user.id);
-    whereClause += ` AND (r.branch_id = ANY($${params.length - 1}) OR r.pickup_branch_id = ANY($${params.length - 1}) OR r.return_branch_id = ANY($${params.length - 1}) OR r.handover_user_id = $${params.length})`;
+    whereClause += ` AND (r.branch_id = ANY($${params.length}) OR r.pickup_branch_id = ANY($${params.length}) OR r.return_branch_id = ANY($${params.length}))`;
   } else if (!isAdmin) {
     params.push(branchIds.length > 0 ? branchIds : [-1]);
     whereClause += ` AND (r.branch_id = ANY($${params.length}) OR r.pickup_branch_id = ANY($${params.length}) OR r.return_branch_id = ANY($${params.length}))`;
