@@ -361,12 +361,13 @@ router.get('/counts', authenticate, async (req, res) => {
     } else if (isSalerOnly) {
       // Nhân viên bán hàng xem toàn bộ đơn
     } else if (driverOnly) {
-      // Driver chỉ xem đơn tại cơ sở mình làm việc
+      // Driver chỉ xem đơn nếu điểm nhận/trả là cơ sở của họ HOẶC họ là người được bàn giao
       params.push(branchIds.length > 0 ? branchIds : [-1]);
-      whereClause += ` AND (branch_id = ANY($${params.length}) OR pickup_branch_id = ANY($${params.length}) OR return_branch_id = ANY($${params.length}))`;
+      params.push(req.user.id);
+      whereClause += ` AND (COALESCE(pickup_branch_id, branch_id) = ANY($${params.length - 1}) OR COALESCE(return_branch_id, branch_id) = ANY($${params.length - 1}) OR handover_user_id = $${params.length})`;
     } else if (!isAdmin) {
       params.push(branchIds.length > 0 ? branchIds : [-1]);
-      whereClause += ` AND (branch_id = ANY($${params.length}) OR pickup_branch_id = ANY($${params.length}) OR return_branch_id = ANY($${params.length}))`;
+      whereClause += ` AND (branch_id = ANY($${params.length}) OR COALESCE(pickup_branch_id, branch_id) = ANY($${params.length}) OR COALESCE(return_branch_id, branch_id) = ANY($${params.length}))`;
     }
 
     const result = await pool.query(`
@@ -454,12 +455,13 @@ router.get('/', authenticate, async (req, res) => {
     // Nhân viên bán hàng thấy toàn bộ đơn (theo yêu cầu mới)
     // Không giới hạn whereClause
   } else if (driverOnly) {
-    // Driver chỉ xem đơn tại cơ sở mình làm việc
+    // Driver chỉ xem đơn nếu điểm nhận/trả là cơ sở của họ HOẶC họ là người được bàn giao
     params.push(branchIds.length > 0 ? branchIds : [-1]);
-    whereClause += ` AND (r.branch_id = ANY($${params.length}) OR r.pickup_branch_id = ANY($${params.length}) OR r.return_branch_id = ANY($${params.length}))`;
+    params.push(req.user.id);
+    whereClause += ` AND (COALESCE(r.pickup_branch_id, r.branch_id) = ANY($${params.length - 1}) OR COALESCE(r.return_branch_id, r.branch_id) = ANY($${params.length - 1}) OR r.handover_user_id = $${params.length})`;
   } else if (!isAdmin) {
     params.push(branchIds.length > 0 ? branchIds : [-1]);
-    whereClause += ` AND (r.branch_id = ANY($${params.length}) OR r.pickup_branch_id = ANY($${params.length}) OR r.return_branch_id = ANY($${params.length}))`;
+    whereClause += ` AND (r.branch_id = ANY($${params.length}) OR COALESCE(r.pickup_branch_id, r.branch_id) = ANY($${params.length}) OR COALESCE(r.return_branch_id, r.branch_id) = ANY($${params.length}))`;
   }
 
   if (status !== 'all') {
