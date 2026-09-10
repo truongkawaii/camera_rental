@@ -19,7 +19,14 @@ const router = express.Router();
 
 const isInvestorOnly = (user) => hasRole(user, 'investor') && !hasRole(user, 'admin', 'camera_manager');
 const isDriverOnly = (user) => hasRole(user, 'driver') && !hasRole(user, 'admin', 'camera_manager', 'investor', 'saler');
-const canAssignRentalCreator = (user) => hasRole(user, 'admin', 'camera_manager', 'investor', 'saler');
+const canAssignRentalCreator = (user) => {
+  if (!user) return false;
+  const targetRoles = ['admin', 'camera_manager', 'investor', 'saler'];
+  // Check full roles (not activeRole) — assigning rental creator is a functional permission
+  if (Array.isArray(user.roles)) return targetRoles.some(r => user.roles.includes(r));
+  if (typeof user.role === 'string') return targetRoles.includes(user.role);
+  return false;
+};
 
 const RENTAL_SORT_COLUMNS = {
   code: "COALESCE(r.code, 'OD' || LPAD(COALESCE(r.order_number, r.id)::text, 7, '0'))",
