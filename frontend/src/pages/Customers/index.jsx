@@ -347,24 +347,22 @@ const Customers = () => {
                     {customer.total_rentals || 0} đơn thuê
                   </div>
                   <div className="flex items-center gap-2">
-                    {isAdmin && (
-                      customer.is_blacklisted ? (
-                        <button
-                          onClick={() => setUnblacklistTarget(customer)}
-                          className="p-2 text-amber-600 hover:bg-amber-50 rounded-xl transition-colors border border-transparent hover:border-amber-100"
-                          title="Gỡ khỏi danh sách hạn chế"
-                        >
-                          <ShieldCheck size={18} />
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => { setBlacklistTarget(customer); setBlacklistReason(''); }}
-                          className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors border border-transparent hover:border-red-100"
-                          title="Đưa vào danh sách hạn chế"
-                        >
-                          <ShieldBan size={18} />
-                        </button>
-                      )
+                    {customer.is_blacklisted ? (
+                      <button
+                        onClick={() => setUnblacklistTarget(customer)}
+                        className="p-2 text-amber-600 hover:bg-amber-50 rounded-xl transition-colors border border-transparent hover:border-amber-100"
+                        title="Gỡ khỏi danh sách hạn chế"
+                      >
+                        <ShieldCheck size={18} />
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => { setBlacklistTarget(customer); setBlacklistReason(''); }}
+                        className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors border border-transparent hover:border-red-100"
+                        title="Đưa vào danh sách hạn chế"
+                      >
+                        <ShieldBan size={18} />
+                      </button>
                     )}
                     <button
                       onClick={() => openEditModal(customer)}

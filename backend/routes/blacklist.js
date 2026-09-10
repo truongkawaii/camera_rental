@@ -108,8 +108,8 @@ router.get('/check/:customerId', authenticate, async (req, res) => {
   }
 });
 
-// POST blacklist a customer (admin only)
-router.post('/', authenticate, requireAdmin, async (req, res) => {
+// POST blacklist a customer (any authenticated user)
+router.post('/', authenticate, async (req, res) => {
   const { customer_id, reason } = req.body;
 
   if (!customer_id) {
@@ -160,8 +160,8 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
   }
 });
 
-// PUT unblacklist a customer (admin only)
-router.put('/:id/unblacklist', authenticate, requireAdmin, async (req, res) => {
+// PUT unblacklist a customer (any authenticated user)
+router.put('/:id/unblacklist', authenticate, async (req, res) => {
   const { id } = req.params;
 
   const client = await pool.connect();
@@ -209,8 +209,8 @@ router.put('/:id/unblacklist', authenticate, requireAdmin, async (req, res) => {
   }
 });
 
-// DELETE permanently remove a blacklist entry (admin only)
-router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
+// DELETE permanently remove a blacklist entry (any authenticated user)
+router.delete('/:id', authenticate, async (req, res) => {
   const { id } = req.params;
 
   try {
