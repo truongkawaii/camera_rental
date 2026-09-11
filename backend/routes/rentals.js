@@ -1066,7 +1066,7 @@ router.put('/:id', authenticate, async (req, res) => {
       ? requestedHandoverUserId
       : normalizeOptionalUserId(old.handover_user_id);
 
-    if (canAssignRentalCreator(req.user) && requestedUserId) {
+    if (canAssignRentalCreator(req.user) && requestedUserId && Number(requestedUserId) !== Number(old.user_id)) {
       const validCreator = await validateRentalCreator(client, requestedUserId);
       if (!validCreator) {
         await client.query('ROLLBACK');
