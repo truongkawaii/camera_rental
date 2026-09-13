@@ -118,37 +118,49 @@ const findConflictingEquipmentIds = async (equipmentIds, startDate, endDate, exc
     if (excludeRentalId) params.push(excludeRentalId);
 
     const query = `
-      SELECT conflict_id
+      SELECT conflict_id, conflict_type, conflict_code, conflict_start, conflict_end
       FROM (
-        SELECT r.equipment_id AS conflict_id
+        SELECT r.equipment_id AS conflict_id, 'rental' AS conflict_type,
+               COALESCE(r.code, 'OD' || LPAD(COALESCE(r.order_number, r.id)::text, 7, '0')) AS conflict_code,
+               COALESCE(r.pickup_time, r.start_date) AS conflict_start,
+               COALESCE(r.return_time, r.end_date) AS conflict_end
         FROM rentals r
         WHERE r.equipment_id = ANY($1)
           AND r.is_deleted = false
           AND r.status NOT IN ('cancelled', 'completed')
-          AND (r.start_date <= $3 AND r.end_date >= $2)
+          AND (COALESCE(r.pickup_time, r.start_date) <= $3 AND COALESCE(r.return_time, r.end_date) >= $2)
           ${excludeClause}
         UNION
-        SELECT ri.equipment_id AS conflict_id
+        SELECT ri.equipment_id AS conflict_id, 'rental' AS conflict_type,
+               COALESCE(r.code, 'OD' || LPAD(COALESCE(r.order_number, r.id)::text, 7, '0')) AS conflict_code,
+               COALESCE(r.pickup_time, r.start_date) AS conflict_start,
+               COALESCE(r.return_time, r.end_date) AS conflict_end
         FROM rental_items ri
         JOIN rentals r ON r.id = ri.rental_id
         WHERE ri.equipment_id = ANY($1)
           AND ri.is_deleted = false
           AND r.is_deleted = false
           AND r.status NOT IN ('cancelled', 'completed')
-          AND (r.start_date <= $3 AND r.end_date >= $2)
+          AND (COALESCE(r.pickup_time, r.start_date) <= $3 AND COALESCE(r.return_time, r.end_date) >= $2)
           ${excludeClause}
         UNION
-        SELECT ra.equipment_id AS conflict_id
+        SELECT ra.equipment_id AS conflict_id, 'rental' AS conflict_type,
+               COALESCE(r.code, 'OD' || LPAD(COALESCE(r.order_number, r.id)::text, 7, '0')) AS conflict_code,
+               COALESCE(r.pickup_time, r.start_date) AS conflict_start,
+               COALESCE(r.return_time, r.end_date) AS conflict_end
         FROM rental_accessories ra
         JOIN rentals r ON r.id = ra.rental_id
         WHERE ra.equipment_id = ANY($1)
           AND ra.is_deleted = false
           AND r.is_deleted = false
           AND r.status NOT IN ('cancelled', 'completed')
-          AND (r.start_date <= $3 AND r.end_date >= $2)
+          AND (COALESCE(r.pickup_time, r.start_date) <= $3 AND COALESCE(r.return_time, r.end_date) >= $2)
           ${excludeClause}
         UNION
-        SELECT em.equipment_id AS conflict_id
+        SELECT em.equipment_id AS conflict_id, 'maintenance' AS conflict_type,
+               'Bảo dưỡng' AS conflict_code,
+               em.maintenance_date AS conflict_start,
+               COALESCE(em.completed_date, em.maintenance_date + interval '30 days') AS conflict_end
         FROM equipment_maintenance em
         WHERE em.equipment_id = ANY($1)
           AND em.is_deleted = false
@@ -157,11 +169,39 @@ const findConflictingEquipmentIds = async (equipmentIds, startDate, endDate, exc
       ) conflicts
     `;
     const result = await pool.query(query, params);
-    return [...new Set(result.rows.map((row) => Number(row.conflict_id)))];
+    return result.rows;
   } catch (err) {
     console.error('Check equipment availability error:', err);
     throw err;
   }
+};
+
+const formatConflictError = async (conflicts, client) => {
+  const equipIds = [...new Set(conflicts.map(c => Number(c.conflict_id)))];
+  const eqRes = await (client || pool).query('SELECT id, name, code FROM equipment WHERE id = ANY($1)', [equipIds]);
+  const eqMap = {};
+  eqRes.rows.forEach(e => { eqMap[e.id] = `${e.name} (${e.code || ''})`; });
+
+  const formatVNDate = (d) => {
+    if (!d) return '';
+    const dt = new Date(d);
+    return dt.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
+
+  const lines = [];
+  const seen = new Set();
+  for (const c of conflicts) {
+    const key = `${c.conflict_id}-${c.conflict_code}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const equipName = eqMap[c.conflict_id] || `#${c.conflict_id}`;
+    if (c.conflict_type === 'maintenance') {
+      lines.push(`${equipName} — đang bảo dưỡng`);
+    } else {
+      lines.push(`${equipName} — trùng đơn ${c.conflict_code} (${formatVNDate(c.conflict_start)} → ${formatVNDate(c.conflict_end)})`);
+    }
+  }
+  return `Thiết bị đã có đơn thuê hoặc đang bảo dưỡng trong khoảng thời gian này:\n${lines.join('\n')}`;
 };
 
 const checkAvailability = async (equipmentId, startDate, endDate, excludeRentalId = null) => {
@@ -819,15 +859,14 @@ router.post('/', authenticate, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const availabilityStart = mappedStart;
-    const availabilityEnd = mappedEnd;
+    const availabilityStart = mappedPickup || mappedStart;
+    const availabilityEnd = mappedReturn || mappedEnd;
 
-    const conflictingIds = await findConflictingEquipmentIds(requestedEquipmentIds, availabilityStart, availabilityEnd);
-    if (conflictingIds.length > 0) {
-      const conflictRes = await client.query('SELECT name, code FROM equipment WHERE id = ANY($1)', [conflictingIds]);
-      const conflictNames = conflictRes.rows.map(e => `${e.name} (${e.code || ''})`);
+    const conflicts = await findConflictingEquipmentIds(requestedEquipmentIds, availabilityStart, availabilityEnd);
+    if (conflicts.length > 0) {
+      const errorMsg = await formatConflictError(conflicts, client);
       await client.query('ROLLBACK');
-      return res.status(400).json({ error: `Thiết bị đã có đơn thuê hoặc đang bảo dưỡng trong khoảng thời gian này: ${conflictNames.join(', ')}` });
+      return res.status(400).json({ error: errorMsg });
     }
 
     const { fullDays, sessions } = calculateDaysSessions(start_date, start_period, end_date, end_period);
@@ -1022,15 +1061,24 @@ router.put('/:id', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Vui lòng chọn ít nhất một thiết bị.' });
     }
 
-    const availabilityStart = mappedStart;
-    const availabilityEnd = mappedEnd;
-    if (statusToSave !== 'cancelled' && statusToSave !== 'completed') {
-      const conflictingIds = await findConflictingEquipmentIds(requestedEquipmentIds, availabilityStart, availabilityEnd, id);
-      if (conflictingIds.length > 0) {
-        const conflictRes = await client.query('SELECT name, code FROM equipment WHERE id = ANY($1)', [conflictingIds]);
-        const conflictNames = conflictRes.rows.map(e => `${e.name} (${e.code || ''})`);
+    const availabilityStart = mappedPickup || mappedStart;
+    const availabilityEnd = mappedReturn || mappedEnd;
+
+    // Check if equipment or dates actually changed (skip conflict check if only status changed)
+    const oldEquipIds = existingItems.length > 0
+      ? existingItems.map(it => Number(it.equipment_id)).sort().join(',')
+      : String(old.equipment_id);
+    const newEquipIds = requestedEquipmentIds.sort().join(',');
+    const datesChanged = String(mappedStart) !== String(old.start_date) || String(mappedEnd) !== String(old.end_date);
+    const equipChanged = oldEquipIds !== newEquipIds;
+    const needsConflictCheck = datesChanged || equipChanged;
+
+    if (needsConflictCheck && statusToSave !== 'cancelled' && statusToSave !== 'completed') {
+      const conflicts = await findConflictingEquipmentIds(requestedEquipmentIds, availabilityStart, availabilityEnd, id);
+      if (conflicts.length > 0) {
+        const errorMsg = await formatConflictError(conflicts, client);
         await client.query('ROLLBACK');
-        return res.status(400).json({ error: `Thiết bị đã có đơn thuê hoặc đang bảo dưỡng trong khoảng thời gian này: ${conflictNames.join(', ')}` });
+        return res.status(400).json({ error: errorMsg });
       }
     }
 
