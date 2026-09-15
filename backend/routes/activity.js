@@ -13,6 +13,7 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
   const search = (req.query.search || '').trim();
   const { startDate, endDate } = req.query;
   const entityTypeRaw = (req.query.entityType || '').trim();
+  const branchId = req.query.branchId ? parseInt(req.query.branchId) : null;
 
   try {
     const filters = ['al.is_deleted = false'];
@@ -36,6 +37,11 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
 
     if (isSuspicious) {
       filters.push(`al.is_suspicious = true`);
+    }
+
+    if (branchId) {
+      params.push(branchId);
+      filters.push(`u.branch_id = $${params.length}`);
     }
 
     if (startDate) {

@@ -187,13 +187,14 @@ export const getPerformanceMetrics = (startDate, endDate) => {
   return api.get(`/performance${params}`);
 };
 
-export const getActivityLogs = (page = 1, limit = 20, search = '', startDate = '', endDate = '', entityTypes = [], isSuspicious = false) => {
+export const getActivityLogs = (page = 1, limit = 20, search = '', startDate = '', endDate = '', entityTypes = [], isSuspicious = false, branchId = '') => {
   const query = new URLSearchParams({ page, limit });
   if (search) query.set('search', search);
   if (startDate) query.set('startDate', startDate);
   if (endDate) query.set('endDate', endDate);
   if (entityTypes.length > 0) query.set('entityType', entityTypes.join(','));
   if (isSuspicious) query.set('is_suspicious', 'true');
+  if (branchId) query.set('branchId', branchId);
   return api.get(`/activity?${query.toString()}`);
 };
 export const getPayroll = (month) => api.get(`/payroll${month ? `?month=${month}` : ''}`);

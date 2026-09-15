@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getActivityLogs } from '../../api/client';
+import { getActivityLogs, getBranches } from '../../api/client';
 import { Activity, Plus, Edit2, Trash2, User, Package, Calendar, RefreshCw, Building2, Search, X, Receipt, Percent, ArrowRightLeft, ShieldBan, UserCog, Filter } from 'lucide-react';
 import Pagination from '../../components/Pagination';
 import DateRangePicker from '../../components/DateRangePicker';
@@ -43,6 +43,21 @@ const ActivityLog = () => {
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [selectedEntities, setSelectedEntities] = useState([]);
   const [isSuspiciousOnly, setIsSuspiciousOnly] = useState(false);
+  const [branches, setBranches] = useState([]);
+  const [selectedBranch, setSelectedBranch] = useState('');
+
+  // Fetch branches
+  useEffect(() => {
+    const fetchBranches = async () => {
+      try {
+        const res = await getBranches();
+        setBranches(res.data);
+      } catch (err) {
+        console.error('Failed to load branches', err);
+      }
+    };
+    fetchBranches();
+  }, []);
 
   // Debounce search input
   useEffect(() => {
@@ -55,12 +70,12 @@ const ActivityLog = () => {
 
   useEffect(() => {
     loadLogs();
-  }, [currentPage, debouncedSearch, dateRange, selectedEntities, isSuspiciousOnly]);
+  }, [currentPage, debouncedSearch, dateRange, selectedEntities, isSuspiciousOnly, selectedBranch]);
 
   const loadLogs = async () => {
     setLoading(true);
     try {
-      const res = await getActivityLogs(currentPage, 20, debouncedSearch, dateRange.start, dateRange.end, selectedEntities, isSuspiciousOnly);
+      const res = await getActivityLogs(currentPage, 20, debouncedSearch, dateRange.start, dateRange.end, selectedEntities, isSuspiciousOnly, selectedBranch);
       setLogs(res.data.data);
       setTotalPages(res.data.pagination.totalPages);
       setTotalCount(res.data.pagination.total);
@@ -191,6 +206,26 @@ const ActivityLog = () => {
             <ShieldBan size={13} className={isSuspiciousOnly ? 'text-red-500' : ''} />
             Chỉ cảnh báo
           </button>
+
+          <div className="h-4 w-px bg-gray-200 mx-1"></div>
+          <div className="relative">
+            <select
+              value={selectedBranch}
+              onChange={(e) => {
+                setSelectedBranch(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="appearance-none inline-flex items-center gap-1.5 pl-3 pr-8 py-1 rounded-full text-xs font-medium transition-all border bg-white text-gray-500 border-gray-200 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary/20"
+            >
+              <option value="">Tất cả cơ sở</option>
+              {branches.map(b => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+            </div>
+          </div>
         </div>
 
         {/* Log Table */}
