@@ -1280,7 +1280,26 @@ router.put('/:id', authenticate, async (req, res) => {
     // Only log activity if there are actual changes
     if (changes.length > 0) {
       const desc = `Cập nhật đơn thuê ${rental.code} (KH: ${newCustName}): ${changes.join(', ')}`;
-      await logActivity('UPDATE', 'rental', rental.id, desc, req.user.id);
+      const details = {
+        old: {
+          start_date: old.start_date, end_date: old.end_date,
+          total_price: parseFloat(old.total_price), discount_amount: parseFloat(old.discount_amount)
+        },
+        new: {
+          start_date: mappedStart, end_date: mappedEnd,
+          total_price: parseFloat(total_price), discount_amount: parseFloat(finalDiscountAmount || 0)
+        }
+      };
+
+      const durationOld = new Date(old.end_date) - new Date(old.start_date);
+      const durationNew = new Date(mappedEnd) - new Date(mappedStart);
+      const isDurationReduced = durationNew < durationOld;
+      const isPriceReduced = parseFloat(total_price) < parseFloat(old.total_price);
+      const isDiscountIncreased = parseFloat(finalDiscountAmount || 0) > parseFloat(old.discount_amount);
+      
+      const isSuspicious = isDurationReduced || isPriceReduced || isDiscountIncreased;
+
+      await logActivity('UPDATE', 'rental', rental.id, desc, req.user.id, details, isSuspicious);
     }
     res.json({ ...rental, items: pricing.items, accessories: accessories || [] });
   } catch (error) {

@@ -391,6 +391,8 @@ CREATE TABLE IF NOT EXISTS activity_logs (
   entity_type VARCHAR(50) NOT NULL,
   entity_id INTEGER,
   description TEXT NOT NULL,
+  details JSONB,
+  is_suspicious BOOLEAN DEFAULT FALSE,
   inserted_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   inserted_by INTEGER,

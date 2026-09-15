@@ -42,6 +42,7 @@ const ActivityLog = () => {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [selectedEntities, setSelectedEntities] = useState([]);
+  const [isSuspiciousOnly, setIsSuspiciousOnly] = useState(false);
 
   // Debounce search input
   useEffect(() => {
@@ -54,12 +55,12 @@ const ActivityLog = () => {
 
   useEffect(() => {
     loadLogs();
-  }, [currentPage, debouncedSearch, dateRange, selectedEntities]);
+  }, [currentPage, debouncedSearch, dateRange, selectedEntities, isSuspiciousOnly]);
 
   const loadLogs = async () => {
     setLoading(true);
     try {
-      const res = await getActivityLogs(currentPage, 20, debouncedSearch, dateRange.start, dateRange.end, selectedEntities);
+      const res = await getActivityLogs(currentPage, 20, debouncedSearch, dateRange.start, dateRange.end, selectedEntities, isSuspiciousOnly);
       setLogs(res.data.data);
       setTotalPages(res.data.pagination.totalPages);
       setTotalCount(res.data.pagination.total);
@@ -173,6 +174,23 @@ const ActivityLog = () => {
               Xóa filter
             </button>
           )}
+
+          <div className="h-4 w-px bg-gray-200 mx-1"></div>
+
+          <button
+            onClick={() => {
+              setIsSuspiciousOnly(!isSuspiciousOnly);
+              setCurrentPage(1);
+            }}
+            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all border ${
+              isSuspiciousOnly
+                ? 'bg-red-50 text-red-600 border-red-200 shadow-sm'
+                : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            <ShieldBan size={13} className={isSuspiciousOnly ? 'text-red-500' : ''} />
+            Chỉ cảnh báo
+          </button>
         </div>
 
         {/* Log Table */}
@@ -222,10 +240,61 @@ const ActivityLog = () => {
                       </span>
                     </div>
 
-                    {/* Description */}
-                    <p className="flex-1 text-sm text-gray-700 leading-relaxed pt-0.5">
-                      {log.description}
-                    </p>
+                    {/* Description and Details */}
+                    <div className="flex-1 pt-0.5">
+                      <p className="text-sm text-gray-700 leading-relaxed">
+                        {log.is_suspicious && (
+                          <span className="inline-flex items-center gap-1 text-xs text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded font-medium mr-2">
+                            <ShieldBan size={12} /> Cảnh báo
+                          </span>
+                        )}
+                        {log.description}
+                      </p>
+                      
+                      {log.details && (
+                        <div className="mt-2 bg-gray-50 rounded-lg border border-gray-100 p-3 text-sm">
+                          <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wider">Chi tiết thay đổi</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+                            {log.details.old?.start_date && (
+                              <div className="flex flex-col">
+                                <span className="text-xs text-gray-400">Thời gian thuê</span>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <span className="text-gray-500 line-through">{formatDateTime(log.details.old.start_date)} - {formatDateTime(log.details.old.end_date)}</span>
+                                  <ArrowRightLeft size={12} className="text-gray-300" />
+                                  <span className={log.is_suspicious ? 'text-red-600 font-medium' : 'text-gray-800'}>
+                                    {formatDateTime(log.details.new.start_date)} - {formatDateTime(log.details.new.end_date)}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                            {log.details.old?.total_price !== undefined && (
+                              <div className="flex flex-col">
+                                <span className="text-xs text-gray-400">Tổng tiền</span>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <span className="text-gray-500 line-through">{log.details.old.total_price.toLocaleString()}đ</span>
+                                  <ArrowRightLeft size={12} className="text-gray-300" />
+                                  <span className={log.is_suspicious && log.details.new.total_price < log.details.old.total_price ? 'text-red-600 font-medium' : 'text-gray-800'}>
+                                    {log.details.new.total_price.toLocaleString()}đ
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                            {log.details.old?.discount_amount !== undefined && (
+                              <div className="flex flex-col">
+                                <span className="text-xs text-gray-400">Giảm giá</span>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <span className="text-gray-500 line-through">{log.details.old.discount_amount.toLocaleString()}đ</span>
+                                  <ArrowRightLeft size={12} className="text-gray-300" />
+                                  <span className={log.is_suspicious && log.details.new.discount_amount > log.details.old.discount_amount ? 'text-red-600 font-medium' : 'text-gray-800'}>
+                                    {log.details.new.discount_amount.toLocaleString()}đ
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
 
                     {/* Timestamp */}
                     <span className="text-xs text-gray-400 whitespace-nowrap mt-0.5 shrink-0 md:text-right">

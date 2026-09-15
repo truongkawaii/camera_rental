@@ -32,6 +32,12 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
       }
     }
 
+    const isSuspicious = req.query.is_suspicious === 'true';
+
+    if (isSuspicious) {
+      filters.push(`al.is_suspicious = true`);
+    }
+
     if (startDate) {
       params.push(new Date(`${startDate}T00:00:00+07:00`).toISOString());
       filters.push(`al.inserted_at >= $${params.length}`);
@@ -52,7 +58,7 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
     `;
 
     let dataQuery = `
-      SELECT al.id, al.action, al.entity_type, al.entity_id, al.description, al.inserted_at,
+      SELECT al.id, al.action, al.entity_type, al.entity_id, al.description, al.details, al.is_suspicious, al.inserted_at,
              u.username as performed_by_username, u.full_name as performed_by_name
       FROM activity_logs al
       LEFT JOIN users u ON al.inserted_by = u.id
