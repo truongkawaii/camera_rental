@@ -378,21 +378,6 @@ const Rentals = () => {
           is_primary: true
         }] : []);
 
-    // Compute sum of item_totals from saved rental items.
-    // item_total = subtotal - discount_share (item-level day discount).
-    // If total_price in DB equals sum(item_totals) + sum(acc_totals) - order-level discount,
-    // it was NOT manually overridden — let UI recalculate naturally.
-    // Only set custom_total when admin manually keyed in a custom figure.
-    const sumItemTotals = initialItems.reduce((s, it) => {
-      const itTotal = it.item_total != null ? Number(it.item_total) : (it.subtotal != null ? Number(it.subtotal) : 0);
-      return s + itTotal;
-    }, 0);
-    const orderDiscount = Number(item.discount_amount || 0);
-    const computedTotal = Math.max(0, sumItemTotals - orderDiscount);
-    const storedTotal = item.total_price != null ? Number(item.total_price) : null;
-    // Tolerate 1 VND rounding diff
-    const isManuallyOverridden = storedTotal !== null && Math.abs(storedTotal - computedTotal) > 1;
-
     setFormData({
       customer_id: item.customer_id,
       equipment_id: item.equipment_id || initialItems[0]?.equipment_id || '',
@@ -417,7 +402,9 @@ const Rentals = () => {
       pickup_branch_id: item.pickup_branch_id || '',
       return_branch_id: item.return_branch_id || item.pickup_branch_id || '',
       branch_id: item.branch_id || '',
-      custom_total: isManuallyOverridden ? storedTotal : null,
+      // Always use total_price from DB as custom_total so grandTotal = total_price.
+      // This ensures "Còn thiếu" = total_price - paid_amount, which is always correct.
+      custom_total: item.total_price != null ? Number(item.total_price) : null,
       paid_amount: item.paid_amount || 0,
       deposit_type: item.deposit_type || 'money',
       user_id: item.user_id || '',
