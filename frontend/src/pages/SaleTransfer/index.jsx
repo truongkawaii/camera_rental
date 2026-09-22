@@ -13,7 +13,7 @@ const SaleTransfer = () => {
   const [selectedMonth, setSelectedMonth] = useState(
     new Date().toISOString().slice(0, 7)
   );
-  const [summary, setSummary] = useState({ total_payable: 0, total_transferred: 0, remaining: 0, total_order_value: 0, total_revenue: 0, commission_amount: 0, total_orders: 0 });
+  const [summary, setSummary] = useState({ total_payable: 0, total_transferred: 0, remaining: 0, total_order_value: 0, total_revenue: 0, commission_amount: 0, referral_commission_amount: 0, total_orders: 0 });
   const [transfers, setTransfers] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -45,6 +45,7 @@ const SaleTransfer = () => {
         total_order_value: Number(res.data.total_order_value || 0),
         total_revenue: Number(res.data.total_revenue || 0),
         commission_amount: Number(res.data.commission_amount || 0),
+        referral_commission_amount: Number(res.data.referral_commission_amount || 0),
         total_orders: Number(res.data.total_orders || 0),
       });
     } catch (err) {
@@ -298,21 +299,23 @@ const SaleTransfer = () => {
           </div>
 
           {/* Hoa Hồng */}
-          <div className="bg-gradient-to-br from-orange-400 via-orange-500 to-amber-600 rounded-3xl p-3 md:p-4 text-white shadow-xl shadow-orange-100/50 overflow-hidden relative group border border-white/10">
-            <div className="relative z-10 h-full flex flex-col justify-between">
-              <div className="mb-2.5 flex items-center gap-2">
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/20 backdrop-blur-md">
-                  <Calculator size={16} />
+          <div className="bg-gradient-to-br from-orange-400 via-orange-500 to-amber-600 rounded-3xl p-3 md:p-4 text-white shadow-xl shadow-orange-100/50 overflow-hidden relative group border border-white/10 flex flex-col justify-between">
+            <div className="relative z-10">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="p-1.5 bg-white/20 rounded-xl backdrop-blur-md">
+                  <Calculator size={14} className="text-white" />
                 </div>
-                <p className="text-orange-50/90 text-[9px] font-bold uppercase tracking-wide">Hoa Hồng Của Bạn</p>
+                <p className="text-orange-50/90 text-[9px] font-bold uppercase tracking-wide">Tổng Hoa Hồng</p>
               </div>
-              <div>
-                <h2 className="text-base md:text-xl font-bold mt-1">
-                  {Math.round(summary.commission_amount).toLocaleString('vi-VN')}
-                  <span className="text-[10px] ml-1 opacity-70">VND</span>
-                </h2>
-                <p className="text-[10px] text-white/60 mt-0.5">Hoa hồng tháng này</p>
-              </div>
+              <h2 className="text-base md:text-xl xl:text-lg font-bold">
+                {Math.round(summary.commission_amount).toLocaleString('vi-VN')}
+                <span className="text-[10px] ml-1 opacity-70">VND</span>
+              </h2>
+              {summary.referral_commission_amount > 0 && (
+                <div className="mt-1 text-[10px] text-orange-50/80 font-medium">
+                  Bán hàng: {Math.round(summary.commission_amount - summary.referral_commission_amount).toLocaleString('vi-VN')}đ | Giới thiệu: {Math.round(summary.referral_commission_amount).toLocaleString('vi-VN')}đ
+                </div>
+              )}
             </div>
             <Calculator size={80} className="absolute -right-2 -bottom-2 text-white/5 group-hover:scale-110 transition-transform duration-700" />
           </div>

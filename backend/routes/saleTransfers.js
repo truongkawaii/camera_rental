@@ -97,34 +97,64 @@ router.get('/', authenticate, requireSaler, async (req, res) => {
 
     let commissionAmount = 0;
     let driverCommissionAmount = 0;
+    let referralCommissionAmount = 0; // We don't have this in payroll_snapshots currently, but we will fetch it realtime if not found or we can just fetch it anyway. Let's fetch it anyway for the display.
 
     if (snapResult.rows.length > 0) {
       commissionAmount = Number(snapResult.rows[0].commission_amount);
       driverCommissionAmount = Number(snapResult.rows[0].driver_commission_amount);
+      
+      // Still need referral commission for breakdown display, fetch it realtime
+      const refResult = await pool.query(
+        `SELECT COALESCE(SUM(l.commission_amount), 0)::numeric AS referral_commission_amount
+         FROM rental_commission_ledger l
+         JOIN rentals ren ON l.rental_id = ren.id
+         WHERE l.user_id = $1 AND l.line_type = 'uplink_share' AND l.is_deleted = false
+           AND ren.returned_at >= $2::timestamptz
+           AND ren.returned_at < $3::timestamptz
+           AND ren.status = 'completed' AND ren.is_deleted = false`,
+         [req.user.id, startStr, endStr]
+      );
+      referralCommissionAmount = refResult.rows.length > 0 ? Number(refResult.rows[0].referral_commission_amount) : 0;
+      // Since commissionAmount in snapshot might have included referral if it was generated after the fix,
+      // we assume commission_amount is the total, and direct is commissionAmount - referralCommissionAmount.
+      // But let's keep commissionAmount as total.
     } else {
       // Tính hoa hồng realtime
       const commResult = await pool.query(
-        `SELECT COALESCE(SUM(
-                 CASE
-                   WHEN EXISTS (SELECT 1 FROM rental_commission_ledger l0
-                                WHERE l0.rental_id = ren.id AND l0.is_deleted = false)
-                   THEN COALESCE((SELECT SUM(l.commission_amount)
-                                  FROM rental_commission_ledger l
-                                  WHERE l.rental_id = ren.id AND l.user_id = u.id AND l.is_deleted = false), 0)
-                   ELSE ren.total_price * COALESCE(u.commission_rate, 0)
-                 END
-               ), 0)::numeric AS commission_amount
+        `SELECT 
+           COALESCE(SUM(
+             CASE
+               WHEN EXISTS (SELECT 1 FROM rental_commission_ledger l0
+                            WHERE l0.rental_id = ren.id AND l0.is_deleted = false)
+               THEN COALESCE((SELECT SUM(l.commission_amount)
+                              FROM rental_commission_ledger l
+                              WHERE l.rental_id = ren.id AND l.user_id = u.id AND l.is_deleted = false AND (l.line_type = 'direct' OR l.line_type IS NULL)), 0)
+               ELSE ren.total_price * COALESCE(u.commission_rate, 0)
+             END
+           ), 0)::numeric AS direct_commission_amount,
+           COALESCE(SUM(
+             CASE
+               WHEN EXISTS (SELECT 1 FROM rental_commission_ledger l0
+                            WHERE l0.rental_id = ren.id AND l0.is_deleted = false)
+               THEN COALESCE((SELECT SUM(l.commission_amount)
+                              FROM rental_commission_ledger l
+                              WHERE l.rental_id = ren.id AND l.user_id = u.id AND l.is_deleted = false AND l.line_type = 'uplink_share'), 0)
+               ELSE 0
+             END
+           ), 0)::numeric AS referral_commission_amount
          FROM users u
          CROSS JOIN rentals ren
          WHERE u.id = $1 AND u.is_deleted = false
-           AND (ren.manager_id = u.id OR ren.user_id = u.id OR ren.handover_user_id = u.id)
+           AND (ren.manager_id = u.id OR ren.user_id = u.id OR ren.handover_user_id = u.id OR EXISTS (SELECT 1 FROM rental_commission_ledger l1 WHERE l1.rental_id = ren.id AND l1.user_id = u.id AND l1.is_deleted = false))
            AND ren.status = 'completed'
            AND ren.is_deleted = false
            AND ren.returned_at >= $2::timestamptz
            AND ren.returned_at < $3::timestamptz`,
         [req.user.id, startStr, endStr]
       );
-      commissionAmount = commResult.rows.length > 0 ? Number(commResult.rows[0].commission_amount) : 0;
+      const direct = commResult.rows.length > 0 ? Number(commResult.rows[0].direct_commission_amount) : 0;
+      referralCommissionAmount = commResult.rows.length > 0 ? Number(commResult.rows[0].referral_commission_amount) : 0;
+      commissionAmount = direct + referralCommissionAmount;
       driverCommissionAmount = 0;
     }
 
@@ -134,7 +164,7 @@ router.get('/', authenticate, requireSaler, async (req, res) => {
          COALESCE(SUM(ren.total_price), 0)::numeric AS total_order_value,
          COUNT(*)::int AS total_orders
        FROM rentals ren
-       WHERE ren.user_id = $1
+       WHERE (ren.user_id = $1 OR EXISTS (SELECT 1 FROM rental_commission_ledger l1 WHERE l1.rental_id = ren.id AND l1.user_id = $1 AND l1.is_deleted = false))
          AND ren.status IN ('completed', 'active')
          AND ren.is_deleted = false
          AND ren.inserted_at >= $2::timestamptz
@@ -155,6 +185,7 @@ router.get('/', authenticate, requireSaler, async (req, res) => {
       total_order_value: totalOrderValue,
       total_revenue: createdRevenue,
       commission_amount: commissionAmount,
+      referral_commission_amount: referralCommissionAmount, // NEW breakdown
       total_orders: totalOrders,
       transfers: await Promise.all(result.rows.map(async (r) => {
         const images = await getEntityImageUrls(pool, 'sale_transfers', r.id).catch(() => []);

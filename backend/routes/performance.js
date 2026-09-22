@@ -496,10 +496,10 @@ function mapStaffRow(row, currentUserId, isAdmin) {
   const effectiveOrderValue = isDriverOnly ? 0 : parseFloat(row.total_order_value);
   const profit = isDriverOnly
     ? 0
-    : totalRevenue - (commissionAmount - receivedFromDownline) - orderDriverCost - baseSalaryCost;
+    : totalRevenue - userSalerCommission - orderDriverCost - baseSalaryCost - paidToUpline;
 
   // Direct commission: for salers, exclude what was received from downline
-  const directCommission = isSaler ? commissionAmount - receivedFromDownline : commissionAmount;
+  const directCommission = isSaler ? userSalerCommission : commissionAmount;
   const effectiveCommissionRate = effectiveRevenue > 0 ? directCommission / effectiveRevenue : 0;
 
   // Everyone gets this skeleton
@@ -529,10 +529,10 @@ function mapStaffRow(row, currentUserId, isAdmin) {
   if (isAdmin || isOwnRecord) {
     data.total_revenue = effectiveRevenue;
     data.total_order_value = effectiveOrderValue;
-    // Display: saler commission (from ledger source_role='saler') → "Hoa hồng bán hàng"
-    data.commission_amount = userSalerCommission;
+    // Display: saler commission (from ledger source_role='saler') + referral commission received
+    data.commission_amount = userSalerCommission + receivedFromDownline;
     data.commission_rate = effectiveCommissionRate;
-    // Display: driver commission (from ledger source_role='driver') → "Giao nhận:"
+    // Display: driver commission (from ledger source_role='driver')
     data.driver_commission_cost = userDriverCommission;
     data.received_from_downline = receivedFromDownline;
     data.paid_to_upline = paidToUpline;

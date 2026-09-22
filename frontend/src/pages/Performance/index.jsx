@@ -130,6 +130,7 @@ const Performance = () => {
 
   const currentUserMetrics = metrics.find(m => user && m.username === user.username);
   const userCommission = currentUserMetrics ? parseFloat(currentUserMetrics.commission_amount || 0) : 0;
+  const userReferralCommission = currentUserMetrics ? parseFloat(currentUserMetrics.received_from_downline || 0) : 0;
 
   const totalRevenue = metrics.reduce((sum, m) => sum + parseFloat(m.total_revenue), 0);
   const hasMoreMetrics = displayCount < metrics.length;
@@ -269,7 +270,7 @@ const Performance = () => {
               {showStatsOnMobile ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
             </button>
 
-            <div className={`${showStatsOnMobile ? 'grid' : 'hidden'} grid-cols-2 gap-3 mb-8 md:grid md:gap-4 xl:grid-cols-4 xl:gap-6`}>
+            <div className={`${showStatsOnMobile ? 'grid' : 'hidden'} grid-cols-2 gap-3 mb-8 md:grid md:gap-4 ${!isAdmin ? 'xl:grid-cols-5' : 'xl:grid-cols-4'} xl:gap-6`}>
               {/* Doanh Số Tổng */}
               <div className="bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-600 rounded-3xl p-3 md:p-4 text-white shadow-xl shadow-blue-100/50 overflow-hidden relative group border border-white/10">
                 <div className="relative z-10 h-full flex flex-col justify-between">
@@ -300,18 +301,34 @@ const Performance = () => {
 
               {/* Card 3: Hoa hồng for Saler, Tổng đơn for Admin */}
               {!isAdmin ? (
-                <div className="bg-gradient-to-br from-orange-400 via-orange-500 to-amber-600 rounded-3xl p-3 md:p-4 text-white shadow-xl shadow-orange-100/50 overflow-hidden relative group border border-white/10">
-                  <div className="relative z-10 h-full flex flex-col justify-between">
-                    <StatCardHeader icon={Calculator} title="Hoa Hồng Của Bạn" titleClassName="text-orange-50/90" />
-                    <div>
-                      <h2 className="text-base md:text-xl xl:text-lg font-bold mt-1">
-                        {Math.round(userCommission).toLocaleString('vi-VN')}
-                        <span className="text-[10px] ml-1 opacity-70">VND</span>
-                      </h2>
+                <>
+                  <div className="bg-gradient-to-br from-orange-400 via-orange-500 to-amber-600 rounded-3xl p-3 md:p-4 text-white shadow-xl shadow-orange-100/50 overflow-hidden relative group border border-white/10">
+                    <div className="relative z-10 h-full flex flex-col justify-between">
+                      <StatCardHeader icon={Calculator} title="Tổng Hoa Hồng" titleClassName="text-orange-50/90" />
+                      <div>
+                        <h2 className="text-base md:text-xl xl:text-lg font-bold mt-1">
+                          {Math.round(userCommission).toLocaleString('vi-VN')}
+                          <span className="text-[10px] ml-1 opacity-70">VND</span>
+                        </h2>
+                      </div>
                     </div>
+                    <Calculator size={80} className="absolute -right-2 -bottom-2 text-white/5 group-hover:scale-110 transition-transform duration-700" />
                   </div>
-                  <Calculator size={80} className="absolute -right-2 -bottom-2 text-white/5 group-hover:scale-110 transition-transform duration-700" />
-                </div>
+                  
+                  {/* Card 3b: Hoa Hồng Giới Thiệu for Saler */}
+                  <div className="bg-gradient-to-br from-fuchsia-400 via-fuchsia-500 to-purple-600 rounded-3xl p-3 md:p-4 text-white shadow-xl shadow-fuchsia-100/50 overflow-hidden relative group border border-white/10">
+                    <div className="relative z-10 h-full flex flex-col justify-between">
+                      <StatCardHeader icon={User} title="Hoa Hồng Giới Thiệu" titleClassName="text-fuchsia-50/90" />
+                      <div>
+                        <h2 className="text-base md:text-xl xl:text-lg font-bold mt-1">
+                          {Math.round(userReferralCommission).toLocaleString('vi-VN')}
+                          <span className="text-[10px] ml-1 opacity-70">VND</span>
+                        </h2>
+                      </div>
+                    </div>
+                    <User size={80} className="absolute -right-2 -bottom-2 text-white/5 group-hover:scale-110 transition-transform duration-700" />
+                  </div>
+                </>
               ) : (
                 <div className="bg-gradient-to-br from-emerald-400 via-emerald-500 to-teal-600 rounded-3xl p-3 md:p-4 text-white shadow-xl shadow-emerald-100/50 overflow-hidden relative group border border-white/10">
                   <div className="relative z-10 h-full flex flex-col justify-between">

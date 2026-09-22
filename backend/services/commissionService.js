@@ -159,7 +159,6 @@ const allocateDirectLine = async (client, line, effectiveAt) => {
   }
 
   const shares = await getActiveHierarchyShares(client, line.user_id, effectiveAt);
-  let totalShared = 0;
   const uplinkLines = [];
 
   for (const share of shares) {
@@ -169,7 +168,6 @@ const allocateDirectLine = async (client, line, effectiveAt) => {
     const shareAmount = roundMoney(directAmount * (shareRate / 100));
     if (shareAmount <= 0) continue;
 
-    totalShared += shareAmount;
     uplinkLines.push({
       rental_id: line.rental_id,
       user_id: share.parent_user_id,
@@ -182,7 +180,8 @@ const allocateDirectLine = async (client, line, effectiveAt) => {
     });
   }
 
-  const childRetainedAmount = Math.max(0, roundMoney(directAmount - totalShared));
+  // Child retains their full direct commission
+  const childRetainedAmount = directAmount;
   return {
     directLine: {
       ...line,
