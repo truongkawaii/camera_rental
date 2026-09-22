@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getPerformanceMetrics, getRevenueByBranch, getAdsCosts, getMiscCosts } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
-import { TrendingUp, Award, ShoppingBag, CheckCircle, Clock, Users, ChevronRight, Star, Store, ChevronDown, ChevronUp, HelpCircle, Megaphone, Calculator, PieChart, Receipt } from 'lucide-react';
+import { TrendingUp, Award, ShoppingBag, CheckCircle, Clock, Users, ChevronRight, Star, Store, ChevronDown, ChevronUp, HelpCircle, Megaphone, Calculator, PieChart, Receipt, User } from 'lucide-react';
 import DateRangePicker, { getVNToday } from '../../components/DateRangePicker';
 
 const RENTAL_STATUS_MAP = {
