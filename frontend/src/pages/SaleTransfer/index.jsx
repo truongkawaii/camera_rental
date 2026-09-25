@@ -506,6 +506,33 @@ const SaleTransfer = () => {
           </div>
         )}
 
+        {/* ═══════ Thông tin chuyển khoản ═══════ */}
+        {isPositivePayable && summary.remaining > 0 && (
+          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 sm:gap-6 p-5 sm:p-6 rounded-2xl bg-white border border-gray-100/80 shadow-[0_1px_2px_rgba(0,0,0,0.02),0_4px_12px_rgba(0,0,0,0.03)]">
+            <div className="w-48 sm:w-56 shrink-0 bg-gray-50 p-2 rounded-2xl border border-gray-100">
+              <img src="/qr-transfer.png" alt="QR Code Chuyển Khoản" className="w-full h-auto rounded-xl shadow-sm" />
+            </div>
+            <div className="flex-1 text-center sm:text-left pt-1">
+              <h3 className="text-base sm:text-lg font-extrabold text-gray-900 tracking-tight">Thanh toán qua mã QR</h3>
+              <p className="text-sm text-gray-500 mt-2 leading-relaxed">
+                Nhân viên vui lòng quét mã QR bên cạnh để tiến hành nộp số dư doanh thu một cách nhanh chóng và chính xác.
+              </p>
+              <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100/50 rounded-xl inline-block text-left w-full sm:w-auto">
+                <div className="flex items-center gap-2 mb-1">
+                  <Wallet size={16} className="text-blue-600" />
+                  <span className="text-xs font-semibold text-blue-900 uppercase tracking-wide">Số tiền cần nộp</span>
+                </div>
+                <div className="text-xl sm:text-2xl font-extrabold text-blue-700 mt-1">
+                  {fmtVND(summary.remaining)}
+                </div>
+              </div>
+              <p className="text-[11px] sm:text-xs text-gray-400 mt-4 bg-gray-50 py-2 px-3 rounded-lg border border-gray-100 inline-block">
+                <span className="font-semibold text-amber-600">Lưu ý:</span> Vui lòng điền nội dung chuyển khoản rõ ràng và giữ lại hình ảnh giao dịch để tải lên hệ thống.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* ═══════ Transfer History ═══════ */}
         <div className="rounded-2xl sm:rounded-[26px] bg-white border border-gray-100/80 shadow-[0_1px_2px_rgba(0,0,0,0.02),0_4px_12px_rgba(0,0,0,0.03)] overflow-hidden">
           {/* Section Header */}
