@@ -199,7 +199,7 @@ async function calcRealtimePayroll(startStr, endStr) {
         AND rsu.is_deleted = false
         AND rs.is_deleted = false
         AND rs.is_active = true
-        AND rs.effective_from <= NOW()
+        AND (rs.effective_from IS NULL OR rs.effective_from <= NOW())
         AND (rs.effective_to IS NULL OR rs.effective_to >= NOW())
       ORDER BY rs.rate_percent DESC
       LIMIT 1
