@@ -199,9 +199,7 @@ async function calcRealtimePayroll(startStr, endStr) {
     const roleList = user.role_names ? user.role_names.split(',') : [];
     const managed_revenue = Number(user.managed_revenue);
     const commission_amount = Number(user.managed_commission || 0);
-    const effectiveCommissionRate = managed_revenue > 0
-      ? commission_amount / managed_revenue
-      : Number(user.commission_rate || 0);
+    const effectiveCommissionRate = Number(user.commission_rate || 0);
     // Display primary role name (prefer camera_manager > admin > saler)
     const primaryRole = roleList.includes('admin') ? 'admin'
       : roleList.includes('camera_manager') ? 'camera_manager'
