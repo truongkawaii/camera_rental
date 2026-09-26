@@ -44,7 +44,7 @@ async function calcRealtimePayroll(startStr, endStr) {
       u.full_name,
       u.base_salary,
       u.commission_rate,
-      COALESCE(active_rule.rate_percent, u.commission_rate) AS display_commission_rate,
+      COALESCE(active_rule.rate_percent / 100, u.commission_rate) AS display_commission_rate,
       b.name AS branch_name,
       COALESCE(
         string_agg(DISTINCT r.name, ',' ORDER BY r.name ASC),
