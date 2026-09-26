@@ -44,6 +44,7 @@ async function calcRealtimePayroll(startStr, endStr) {
       u.full_name,
       u.base_salary,
       u.commission_rate,
+      COALESCE(active_rule.rate_percent, u.commission_rate) AS display_commission_rate,
       b.name AS branch_name,
       COALESCE(
         string_agg(DISTINCT r.name, ',' ORDER BY r.name ASC),
@@ -190,8 +191,21 @@ async function calcRealtimePayroll(startStr, endStr) {
     LEFT JOIN user_roles ur ON u.id = ur.user_id AND ur.is_deleted = false
     LEFT JOIN roles r ON ur.role_id = r.id AND r.is_deleted = false
     LEFT JOIN branches b ON u.branch_id = b.id AND b.is_deleted = false
+    LEFT JOIN LATERAL (
+      SELECT rs.rate_percent
+      FROM commission_rule_set_users rsu
+      JOIN commission_rule_sets rs ON rs.id = rsu.rule_set_id
+      WHERE rsu.user_id = u.id
+        AND rsu.is_deleted = false
+        AND rs.is_deleted = false
+        AND rs.is_active = true
+        AND rs.effective_from <= NOW()
+        AND (rs.effective_to IS NULL OR rs.effective_to >= NOW())
+      ORDER BY rs.rate_percent DESC
+      LIMIT 1
+    ) active_rule ON true
     WHERE u.is_deleted = false
-    GROUP BY u.id, u.username, u.full_name, u.base_salary, u.commission_rate, b.name, u.inserted_at
+    GROUP BY u.id, u.username, u.full_name, u.base_salary, u.commission_rate, active_rule.rate_percent, b.name, u.inserted_at
     ORDER BY managed_revenue DESC, managed_orders_count DESC
   `, [startStr, endStr]);
 
@@ -199,7 +213,7 @@ async function calcRealtimePayroll(startStr, endStr) {
     const roleList = user.role_names ? user.role_names.split(',') : [];
     const managed_revenue = Number(user.managed_revenue);
     const commission_amount = Number(user.managed_commission || 0);
-    const effectiveCommissionRate = Number(user.commission_rate || 0);
+    const effectiveCommissionRate = Number(user.display_commission_rate || 0);
     // Display primary role name (prefer camera_manager > admin > saler)
     const primaryRole = roleList.includes('admin') ? 'admin'
       : roleList.includes('camera_manager') ? 'camera_manager'
