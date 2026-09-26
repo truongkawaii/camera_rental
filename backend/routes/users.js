@@ -185,6 +185,26 @@ router.put('/:id', authenticate, requireAdmin, async (req, res) => {
     }
     const updated = result.rows[0];
 
+    // Recalculate commissions for this user's completed rentals in the current month
+    // if commission_rate was updated
+    if (req.body.commission_rate !== undefined && req.body.commission_rate !== old.commission_rate) {
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      
+      const rentalsRes = await client.query(
+        `SELECT id FROM rentals 
+         WHERE status = 'completed' AND is_deleted = false
+           AND (user_id = $1 OR handover_user_id = $1)
+           AND inserted_at >= $2`,
+        [id, startOfMonth]
+      );
+      
+      const { ensureCommissionSnapshotForCompletedRental } = require('../services/commissionService');
+      for (let row of rentalsRes.rows) {
+        await ensureCommissionSnapshotForCompletedRental(client, row.id, req.user.id, { forceRecalc: true });
+      }
+    }
+
     // Replace roles
     await client.query('UPDATE user_roles SET is_deleted = true, updated_at = NOW(), updated_by = $1 WHERE user_id = $2', [req.user.id, id]);
     for (const roleId of role_ids) {
