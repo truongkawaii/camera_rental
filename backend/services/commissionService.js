@@ -165,7 +165,8 @@ const allocateDirectLine = async (client, line, effectiveAt) => {
     const shareRate = Math.max(0, share.share_rate_percent);
     if (shareRate <= 0 || !share.parent_user_id) continue;
 
-    const shareAmount = roundMoney(directAmount * (shareRate / 100));
+    // Uplink share is calculated on the rental revenue (base_amount), NOT on subordinate's commission
+    const shareAmount = roundMoney(line.base_amount * (shareRate / 100));
     if (shareAmount <= 0) continue;
 
     uplinkLines.push({
@@ -174,7 +175,7 @@ const allocateDirectLine = async (client, line, effectiveAt) => {
       source_role: line.source_role,
       line_type: 'uplink_share',
       rate_percent: shareRate,
-      base_amount: directAmount,
+      base_amount: line.base_amount,
       commission_amount: shareAmount,
       from_user_id: line.user_id
     });
