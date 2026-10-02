@@ -216,7 +216,7 @@ const calculateCommissionPreview = async (client, payload) => {
   const driverRate = driverRuleSet ? toNumber(driverRuleSet.rate) : 0;
 
   const directCandidates = [];
-  if (salerId && salerRuleSet) {
+  if (salerId) {
     directCandidates.push({
       rental_id,
       user_id: salerId,
@@ -226,7 +226,7 @@ const calculateCommissionPreview = async (client, payload) => {
     });
   }
 
-  if (driverId && driverRuleSet) {
+  if (driverId) {
     directCandidates.push({
       rental_id,
       user_id: driverId,
@@ -279,7 +279,7 @@ const calculateCommissionPreview = async (client, payload) => {
   }));
 
   return {
-    source: (salerRuleSet || driverRuleSet) ? 'rule_set' : 'legacy_user_commission_rate',
+    source: 'rule_set',
     rule_set: {
       saler: salerRuleSet
         ? {

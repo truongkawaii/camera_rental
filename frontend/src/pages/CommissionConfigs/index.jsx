@@ -117,8 +117,10 @@ const UserAssignmentPanel = ({ item, allUsers, toast, onCountChange, reloadParen
   const doAddUser = async (user) => {
     setAddingUser(true);
     try {
-      await addUserToRuleSet(item.id, user.id, selectedRole);
-      toast.success(`Đã thêm ${user.full_name || user.username} vào vai trò ${formatRoleName(selectedRole)}`);
+      const response = await addUserToRuleSet(item.id, user.id, selectedRole);
+      toast.success(response.data?.recalculation_skipped_locked
+        ? `Đã đổi quy tắc cho ${user.full_name || user.username}. Lương tháng này đã chốt.`
+        : `Đã đổi quy tắc cho ${user.full_name || user.username} và tính lại ${response.data?.recalculated_rentals || 0} đơn tháng này.`);
       await loadAssignedUsers();
       reloadParent?.();
       setUserToAdd(null);
@@ -139,8 +141,10 @@ const UserAssignmentPanel = ({ item, allUsers, toast, onCountChange, reloadParen
     if (!user) return;
     setRemovingUserId(user.id);
     try {
-      await removeUserFromRuleSet(item.id, user.id, user.assigned_role);
-      toast.success(`Đã gỡ ${user.full_name || user.username} khỏi vai trò ${formatRoleName(user.assigned_role)}`);
+      const response = await removeUserFromRuleSet(item.id, user.id, user.assigned_role);
+      toast.success(response.data?.recalculation_skipped_locked
+        ? `Đã gỡ ${user.full_name || user.username}. Lương tháng này đã chốt.`
+        : `Đã gỡ ${user.full_name || user.username} và tính lại ${response.data?.recalculated_rentals || 0} đơn tháng này.`);
       await loadAssignedUsers();
       reloadParent?.();
       setUserToRemove(null);

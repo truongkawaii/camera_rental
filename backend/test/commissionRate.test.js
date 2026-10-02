@@ -30,6 +30,20 @@ test('commission preview changes from 30% to 15% and records an assigned 0% rate
   assert.equal(zero.lines[0].line_type, 'direct');
 });
 
+test('unassigned employee gets a zero ledger line instead of legacy payroll fallback', async () => {
+  const client = {
+    async query(sql) {
+      if (sql.includes('FROM commission_rule_set_users rsu')) return { rows: [] };
+      if (sql.includes('FROM users WHERE id = ANY')) return { rows: [{ id: 7, full_name: 'Sale' }] };
+      throw new Error(`Unexpected query: ${sql}`);
+    }
+  };
+  const preview = await calculateCommissionPreview(client, { total_price: 1000, user_id: 7 });
+  assert.equal(preview.lines.length, 1);
+  assert.equal(preview.lines[0].commission_amount, 0);
+  assert.equal(preview.lines[0].rate_percent, 0);
+});
+
 test('current-month selection uses completed date in Vietnam and respects locked payroll', async () => {
   let rentalQuery = '';
   let insertedLine = null;
@@ -120,6 +134,61 @@ test('saving a saler rate recalculates assigned users before commit', async () =
     assert.equal((await response.json()).recalculated_rentals, 2);
     assert.deepEqual(recalculatedUsers, [7]);
     assert.ok(queries.indexOf('COMMIT') > queries.findIndex(sql => sql.includes('SELECT user_id FROM commission_rule_set_users')));
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+    [dbPath, servicePath, loggerPath, routePath].forEach((path, index) => {
+      if (original[index]) require.cache[path] = original[index];
+      else delete require.cache[path];
+    });
+  }
+});
+
+test('moving an employee between rule sets recalculates current month in the same transaction', async () => {
+  const dbPath = require.resolve('../utils/db');
+  const servicePath = require.resolve('../services/commissionService');
+  const loggerPath = require.resolve('../utils/logger');
+  const routePath = require.resolve('../routes/commissionConfigs');
+  const original = [dbPath, servicePath, loggerPath, routePath].map(path => require.cache[path]);
+  const queries = [];
+  const recalculations = [];
+  const client = {
+    async query(sql, params) {
+      queries.push(sql);
+      if (sql.includes('SELECT id, name, rule_type FROM commission_rule_sets')) return { rows: [{ id: 3, name: '15%', rule_type: 'saler' }] };
+      if (sql.includes('SELECT id, username FROM users')) return { rows: [{ id: 7, username: 'tung' }] };
+      if (sql.includes('SELECT rsu.rule_set_id')) return { rows: [{ rule_set_id: 1, old_rule_set_name: '30%' }] };
+      return { rows: [] };
+    },
+    release() {}
+  };
+  require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: { pool: { connect: async () => client } } };
+  require.cache[servicePath] = { id: servicePath, filename: servicePath, loaded: true, exports: {
+    recalculateCurrentMonthCommissions: async (_client, userIds, roleName) => {
+      recalculations.push({ userIds, roleName, queryCount: queries.length });
+      return { recalculated: 1, skippedLocked: false };
+    }
+  } };
+  require.cache[loggerPath] = { id: loggerPath, filename: loggerPath, loaded: true, exports: { logActivity: async () => {} } };
+  delete require.cache[routePath];
+  const app = express();
+  app.use(express.json());
+  app.use('/api/commission-configs', require(routePath));
+  const server = await new Promise(resolve => {
+    const instance = app.listen(0, '127.0.0.1', () => resolve(instance));
+  });
+  try {
+    process.env.JWT_SECRET = 'commission-test-secret';
+    const token = jwt.sign({ id: 1, roles: ['admin'] }, process.env.JWT_SECRET);
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/commission-configs/3/users`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: 7, role_name: 'saler' })
+    });
+    assert.equal(response.status, 201);
+    assert.equal((await response.json()).recalculated_rentals, 1);
+    assert.deepEqual(recalculations.map(({ userIds, roleName }) => ({ userIds, roleName })), [{ userIds: [7], roleName: 'saler' }]);
+    assert.ok(queries.findIndex(sql => sql.includes('INSERT INTO commission_rule_set_users')) < recalculations[0].queryCount);
+    assert.equal(queries.slice(0, recalculations[0].queryCount).includes('COMMIT'), false);
   } finally {
     await new Promise(resolve => server.close(resolve));
     [dbPath, servicePath, loggerPath, routePath].forEach((path, index) => {

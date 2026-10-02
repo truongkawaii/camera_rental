@@ -167,12 +167,16 @@ router.post('/:id/users', authenticate, requireAdmin, async (req, res) => {
 
     // Verify rule set exists
     const rsCheck = await client.query(
-      'SELECT id, name FROM commission_rule_sets WHERE id = $1 AND is_deleted = false LIMIT 1',
+      'SELECT id, name, rule_type FROM commission_rule_sets WHERE id = $1 AND is_deleted = false LIMIT 1',
       [id]
     );
     if (rsCheck.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Rule set not found' });
+    }
+    if (rsCheck.rows[0].rule_type !== roleName) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Role does not match rule set type' });
     }
 
     // Verify user exists
@@ -212,6 +216,7 @@ router.post('/:id/users', authenticate, requireAdmin, async (req, res) => {
       [id, userId, roleName, req.user.id]
     );
 
+    const recalculation = await recalculateCurrentMonthCommissions(client, [userId], roleName, req.user.id);
     await client.query('COMMIT');
 
     // Log removal from old rule set (if applicable)
@@ -223,7 +228,11 @@ router.post('/:id/users', authenticate, requireAdmin, async (req, res) => {
     }
 
     await logActivity('UPDATE', 'commission_config', id, `Gán user "${userCheck.rows[0].username}" vào bộ quy tắc "${rsCheck.rows[0].name}" với vai trò ${roleName === 'saler' ? 'Saler' : 'Driver'}`, req.user.id);
-    return res.status(201).json({ message: `User assigned to rule set as ${roleName}` });
+    return res.status(201).json({
+      message: `User assigned to rule set as ${roleName}`,
+      recalculated_rentals: recalculation.recalculated,
+      recalculation_skipped_locked: recalculation.skippedLocked
+    });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Assign user to rule set error:', error);
@@ -243,8 +252,13 @@ router.delete('/:id/users/:userId', authenticate, requireAdmin, async (req, res)
   }
 
   const roleName = req.query.role_name;
+  if (roleName && !['saler', 'driver'].includes(roleName)) {
+    return res.status(400).json({ error: 'Invalid role_name' });
+  }
 
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
     let query = `
         UPDATE commission_rule_set_users
         SET is_deleted = true, updated_at = NOW(), updated_by = $3
@@ -259,13 +273,23 @@ router.delete('/:id/users/:userId', authenticate, requireAdmin, async (req, res)
       params.push(roleName);
     }
 
-    query += ` RETURNING id`;
+    query += ` RETURNING id, role_name`;
 
-    const result = await pool.query(query, params);
+    const result = await client.query(query, params);
 
     if (result.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Assignment not found' });
     }
+
+    let recalculatedRentals = 0;
+    let skippedLocked = false;
+    for (const removedRole of new Set(result.rows.map(row => row.role_name))) {
+      const recalculation = await recalculateCurrentMonthCommissions(client, [userId], removedRole, req.user.id);
+      recalculatedRentals += recalculation.recalculated;
+      skippedLocked ||= recalculation.skippedLocked;
+    }
+    await client.query('COMMIT');
 
     // Lấy tên rule set và username để ghi log
     const [rsInfo, userInfo] = await Promise.all([
@@ -276,10 +300,13 @@ router.delete('/:id/users/:userId', authenticate, requireAdmin, async (req, res)
     const targetUsername = userInfo.rows[0]?.username || `#${userId}`;
     await logActivity('UPDATE', 'commission_config', id, `Gỡ user "${targetUsername}" khỏi bộ quy tắc "${rsName}"`, req.user.id);
 
-    return res.json({ message: 'User removed from rule set' });
+    return res.json({ message: 'User removed from rule set', recalculated_rentals: recalculatedRentals, recalculation_skipped_locked: skippedLocked });
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('Remove user from rule set error:', error);
     return res.status(500).json({ error: 'Failed to remove user' });
+  } finally {
+    client.release();
   }
 });
 
