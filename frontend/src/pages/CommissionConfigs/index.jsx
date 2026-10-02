@@ -536,9 +536,10 @@ const CommissionConfigs = () => {
       const target = editingRates[id] || { saler: 0, driver: 0 };
       const newRate = isSaler ? toRate(target.saler) : toRate(target.driver);
       const currentRate = Number(item?.rate_percent) || 0;
+      let rateResponse = null;
       if (newRate !== currentRate) {
         const payload = isSaler ? { saler: newRate } : { driver: newRate };
-        await updateCommissionRates(id, payload);
+        rateResponse = await updateCommissionRates(id, payload);
         // Update local state
         setItems((prev) => prev.map((it) =>
           it.id === id ? { ...it, rate_percent: newRate } : it
@@ -552,7 +553,11 @@ const CommissionConfigs = () => {
         }));
       }
 
-      toast.success('Đã cập nhật bộ quy tắc');
+      toast.success(rateResponse?.data?.recalculation_skipped_locked
+        ? 'Đã cập nhật tỷ lệ. Lương tháng này đã chốt nên số tiền giữ nguyên.'
+        : rateResponse
+          ? `Đã cập nhật bộ quy tắc và tính lại ${rateResponse.data?.recalculated_rentals || 0} đơn tháng này.`
+          : 'Đã cập nhật bộ quy tắc');
       setEditingItemId(null);
       await loadData();
     } catch (error) {
@@ -621,8 +626,10 @@ const CommissionConfigs = () => {
       const payload = isSaler
         ? { saler: newRate }
         : { driver: newRate };
-      await updateCommissionRates(id, payload);
-      toast.success('Cập nhật tỷ lệ thành công');
+      const rateResponse = await updateCommissionRates(id, payload);
+      toast.success(rateResponse.data?.recalculation_skipped_locked
+        ? 'Đã cập nhật tỷ lệ. Lương tháng này đã chốt nên số tiền giữ nguyên.'
+        : `Cập nhật tỷ lệ thành công, đã tính lại ${rateResponse.data?.recalculated_rentals || 0} đơn tháng này.`);
 
       // Lightweight reload: refresh just the configs list without loading overlay
       try {

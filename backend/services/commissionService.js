@@ -153,7 +153,8 @@ const allocateDirectLine = async (client, line, effectiveAt) => {
   const directAmount = roundMoney(line.base_amount * (line.rate_percent / 100));
   if (directAmount <= 0) {
     return {
-      directLine: null,
+      // Keep a zero-value ledger line so payroll does not fall back to a legacy rate.
+      directLine: { ...line, line_type: 'direct', commission_amount: 0 },
       uplinkLines: []
     };
   }
@@ -215,7 +216,7 @@ const calculateCommissionPreview = async (client, payload) => {
   const driverRate = driverRuleSet ? toNumber(driverRuleSet.rate) : 0;
 
   const directCandidates = [];
-  if (salerId && salerRate > 0) {
+  if (salerId && salerRuleSet) {
     directCandidates.push({
       rental_id,
       user_id: salerId,
@@ -225,7 +226,7 @@ const calculateCommissionPreview = async (client, payload) => {
     });
   }
 
-  if (driverId && driverRate > 0) {
+  if (driverId && driverRuleSet) {
     directCandidates.push({
       rental_id,
       user_id: driverId,
@@ -238,7 +239,7 @@ const calculateCommissionPreview = async (client, payload) => {
   const commissionLines = [];
   for (const candidate of directCandidates) {
     const allocation = await allocateDirectLine(client, candidate, effectiveAt);
-    if (allocation.directLine && allocation.directLine.commission_amount > 0) {
+    if (allocation.directLine) {
       commissionLines.push(allocation.directLine);
     }
     for (const uplink of allocation.uplinkLines) {
@@ -404,9 +405,44 @@ const ensureCommissionSnapshotForCompletedRental = async (client, rentalId, acte
   };
 };
 
+// Rate edits apply to completed rentals in the open Vietnamese
+// calendar month. Earlier months and locked payroll snapshots stay untouched.
+const recalculateCurrentMonthCommissions = async (client, userIds, roleName, actedByUserId) => {
+  if (!['saler', 'driver'].includes(roleName) || userIds.length === 0) {
+    return { recalculated: 0, skippedLocked: false };
+  }
+
+  const locked = await client.query(`
+    SELECT 1 FROM payroll_snapshots
+    WHERE month = to_char(NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM')
+      AND is_deleted = false
+    LIMIT 1
+  `);
+  if (locked.rows.length > 0) {
+    return { recalculated: 0, skippedLocked: true };
+  }
+
+  const rentals = await client.query(`
+    SELECT DISTINCT ren.id
+    FROM rentals ren
+    WHERE ren.status = 'completed'
+      AND ren.is_deleted = false
+      AND ren.returned_at >= (date_trunc('month', NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh') AT TIME ZONE 'Asia/Ho_Chi_Minh')
+      AND ren.returned_at < ((date_trunc('month', NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh') + INTERVAL '1 month') AT TIME ZONE 'Asia/Ho_Chi_Minh')
+      AND (CASE WHEN $2 = 'saler' THEN ren.user_id ELSE ren.handover_user_id END) = ANY($1::int[])
+    ORDER BY ren.id
+  `, [userIds, roleName]);
+
+  for (const rental of rentals.rows) {
+    await ensureCommissionSnapshotForCompletedRental(client, rental.id, actedByUserId, { forceRecalc: true });
+  }
+  return { recalculated: rentals.rows.length, skippedLocked: false };
+};
+
 module.exports = {
   calculateCommissionPreview,
   ensureCommissionSnapshotForCompletedRental,
+  recalculateCurrentMonthCommissions,
   getActiveRuleSet,
   getRuleSetForUserRole,
   getActiveHierarchyShares

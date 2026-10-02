@@ -2,6 +2,7 @@ const express = require('express');
 const { pool } = require('../utils/db');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { logActivity } = require('../utils/logger');
+const { recalculateCurrentMonthCommissions } = require('../services/commissionService');
 
 const router = express.Router();
 
@@ -542,7 +543,11 @@ router.put('/:id/rates', authenticate, requireAdmin, async (req, res) => {
 
     // Fetch old rate for diff
     const oldRateResult = await client.query(
-      'SELECT rate_percent, name FROM commission_rule_sets WHERE id = $1 AND is_deleted = false FOR UPDATE LIMIT 1',
+      `SELECT rate_percent, name, rule_type,
+              (is_active = true
+               AND (effective_from IS NULL OR effective_from <= NOW())
+               AND (effective_to IS NULL OR effective_to >= NOW())) AS is_effective_now
+       FROM commission_rule_sets WHERE id = $1 AND is_deleted = false FOR UPDATE LIMIT 1`,
       [id]
     );
     if (oldRateResult.rows.length === 0) {
@@ -579,6 +584,21 @@ router.put('/:id/rates', authenticate, requireAdmin, async (req, res) => {
       return res.status(404).json({ error: 'Rule set not found or already deleted' });
     }
 
+    let recalculation = { recalculated: 0, skippedLocked: false };
+    if (oldRateResult.rows[0].is_effective_now) {
+      const assignedUsers = await client.query(
+        `SELECT user_id FROM commission_rule_set_users
+         WHERE rule_set_id = $1 AND role_name = $2 AND is_deleted = false`,
+        [id, ruleType]
+      );
+      recalculation = await recalculateCurrentMonthCommissions(
+        client,
+        assignedUsers.rows.map(row => row.user_id),
+        ruleType,
+        req.user.id
+      );
+    }
+
     await client.query('COMMIT');
 
     const newRate = Number(result.rows[0].rate_percent);
@@ -587,7 +607,11 @@ router.put('/:id/rates', authenticate, requireAdmin, async (req, res) => {
       : `Cập nhật tỷ lệ hoa hồng cho "${result.rows[0].name}" thành ${newRate}%`;
 
     await logActivity('UPDATE', 'commission_config', id, desc, req.user.id);
-    return res.json(result.rows[0]);
+    return res.json({
+      ...result.rows[0],
+      recalculated_rentals: recalculation.recalculated,
+      recalculation_skipped_locked: recalculation.skippedLocked
+    });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Update commission rates error:', error);
@@ -661,4 +685,3 @@ router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
 });
 
 module.exports = router;
-
