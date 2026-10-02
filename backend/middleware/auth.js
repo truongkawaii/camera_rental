@@ -18,6 +18,9 @@ const authenticate = (req, res, next) => {
         req.user.activeRole = activeRoleHeader;
       }
     }
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && hasRole(req.user, 'investor')) {
+      return res.status(403).json({ error: 'Nhà đầu tư chỉ có quyền xem dữ liệu.' });
+    }
     next();
   } catch {
     res.status(401).json({ error: 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.' });
@@ -55,17 +58,17 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
-/** Require admin, camera_manager, investor, or driver for status updates */
+/** Require admin, camera_manager, or driver for status updates */
 const requireStatusManager = (req, res, next) => {
-  if (!hasRole(req.user, 'admin', 'camera_manager', 'investor', 'driver')) {
+  if (!hasRole(req.user, 'admin', 'camera_manager', 'driver')) {
     return res.status(403).json({ error: 'Chỉ Quản lý Camera, Driver hoặc Quản trị viên mới có quyền cập nhật trạng thái đơn thuê.' });
   }
   next();
 };
 
-/** Require admin, camera_manager, or investor */
+/** Require admin or camera_manager */
 const requireAdminOrManager = (req, res, next) => {
-  if (!hasRole(req.user, 'admin', 'camera_manager', 'investor')) {
+  if (!hasRole(req.user, 'admin', 'camera_manager')) {
     return res.status(403).json({ error: 'Bạn không có quyền thực hiện hành động này.' });
   }
   next();

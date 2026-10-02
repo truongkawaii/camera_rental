@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { getInvestorRevenue, getMiscCosts } from '../../api/client';
+import { getInvestorRevenue } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import { PieChart, TrendingUp, ChevronDown, ChevronUp, ShoppingBag, DollarSign, Wallet, RefreshCw, Layers } from 'lucide-react';
 import DateRangePicker, { getVNToday } from '../../components/DateRangePicker';
@@ -24,7 +24,6 @@ const InvestorsPage = () => {
   const isInvestor = hasRole ? (hasRole('investor') && !isAdmin && !hasRole('camera_manager')) : ((user?.roles?.includes('investor') || user?.role === 'investor') && !isAdmin && !(user?.roles?.includes('camera_manager') || user?.role === 'camera_manager'));
 
   const [investorRevenue, setInvestorRevenue] = useState([]);
-  const [miscCosts, setMiscCosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedInvestors, setExpandedInvestors] = useState([]);
@@ -62,13 +61,7 @@ const InvestorsPage = () => {
     else setLoading(true);
 
     try {
-      const [investorRes, miscRes] = await Promise.all([
-        getInvestorRevenue(start, end).catch(err => {
-          console.error('getInvestorRevenue error:', err);
-          return { data: [] };
-        }),
-        getMiscCosts({ startDate: start, endDate: end }).catch(() => ({ data: { misc_costs: [] } }))
-      ]);
+      const investorRes = await getInvestorRevenue(start, end);
 
       let data = investorRes?.data || [];
       // If investor role, filter only self if needed, or backend already scopes it
@@ -77,7 +70,6 @@ const InvestorsPage = () => {
       }
 
       setInvestorRevenue(data);
-      setMiscCosts(miscRes?.data?.misc_costs || miscRes?.data || []);
     } catch (err) {
       console.error('Error loading investor report:', err);
       setInvestorRevenue([]);
@@ -116,9 +108,9 @@ const InvestorsPage = () => {
   const totalInvestorAdsCost = investorGroupRows.reduce((sum, investor) => sum + parseFloat(investor.ads_cost || 0), 0);
   const totalInvestorCommission = investorGroupRows.reduce((sum, investor) => sum + parseFloat(investor.commission_amount || 0), 0);
   const totalInvestorDriverCommission = investorGroupRows.reduce((sum, investor) => sum + parseFloat(investor.driver_commission_amount || 0), 0);
-  
-  const totalInvestorMiscCost = miscCosts.reduce((sum, m) => sum + parseFloat(m.amount || 0), 0);
-  const totalOverallCost = totalInvestorCommission + totalInvestorDriverCommission + totalInvestorAdsCost;
+  const totalInvestorMiscCost = investorGroupRows.reduce((sum, investor) => sum + parseFloat(investor.misc_cost || 0), 0);
+  const totalInvestorMaintenanceCost = investorGroupRows.reduce((sum, investor) => sum + parseFloat(investor.maintenance_cost || 0), 0);
+  const totalOverallCost = totalInvestorCommission + totalInvestorDriverCommission + totalInvestorAdsCost + totalInvestorMiscCost + totalInvestorMaintenanceCost;
   const totalOverallNet = totalInvestorRevenue - totalOverallCost;
 
   const investorGroupKey = investorGroupRows.map(investor => investor.id).join('|');
@@ -188,7 +180,7 @@ const InvestorsPage = () => {
       </div>
 
       {/* KPI Overview Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 md:gap-4">
         <div className="bg-white rounded-2xl p-4 md:p-5 border border-gray-100 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">Tổng Đơn</span>
@@ -234,10 +226,19 @@ const InvestorsPage = () => {
             </div>
           </div>
           <p className="text-2xl font-black text-rose-500 mt-2 truncate">-{formatVND(totalOverallCost)}</p>
-          <p className="text-[11px] text-rose-400 mt-1">Hoa hồng + Giao nhận + Ads</p>
+          <p className="text-[11px] text-rose-400 mt-1">Hoa hồng + Giao nhận + Ads + Phát sinh + Bảo dưỡng</p>
         </div>
 
-        <div className="col-span-2 lg:col-span-1 bg-gradient-to-br from-emerald-600 to-teal-700 rounded-2xl p-4 md:p-5 text-white shadow-md shadow-emerald-600/20">
+        <div className="bg-white rounded-2xl p-4 md:p-5 border border-orange-100 shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-orange-600">Chi Phí Phát Sinh</span>
+            <div className="p-2 bg-orange-50 text-orange-600 rounded-xl"><Wallet size={18} /></div>
+          </div>
+          <p className="text-2xl font-black text-orange-600 mt-2 truncate">-{formatVND(totalInvestorMiscCost)}</p>
+          <p className="text-[11px] text-orange-500 mt-1">Theo cơ sở sở hữu thiết bị</p>
+        </div>
+
+        <div className="bg-gradient-to-br from-emerald-600 to-teal-700 rounded-2xl p-4 md:p-5 text-white shadow-md shadow-emerald-600/20">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-emerald-100">Lợi Nhuận Còn Lại</span>
             <div className="p-2 bg-white/20 rounded-xl text-white backdrop-blur-sm">
@@ -265,6 +266,9 @@ const InvestorsPage = () => {
             <span className="rounded-full bg-white px-3 py-1 text-orange-500 border border-orange-100 shadow-sm">
               Ads: {formatVND(totalInvestorAdsCost)}
             </span>
+            <span className="rounded-full bg-white px-3 py-1 text-rose-500 border border-rose-100 shadow-sm">
+              Phát sinh: {formatVND(totalInvestorMiscCost)}
+            </span>
             <span className="rounded-full bg-emerald-600 px-3 py-1 text-white shadow-sm">
               Đã thu: {formatVND(totalInvestorRevenue)}
             </span>
@@ -280,9 +284,7 @@ const InvestorsPage = () => {
           <div className="divide-y divide-emerald-50 bg-white">
             {investorGroupRows.map(investor => {
               const isExpanded = expandedInvestors.includes(investor.id);
-              const investorMiscCost = miscCosts
-                .filter(m => investor.orders.some(o => o.branch_id != null && Number(o.branch_id) === Number(m.branch_id)))
-                .reduce((sum, m) => sum + parseFloat(m.amount || 0), 0);
+              const investorMiscCost = parseFloat(investor.misc_cost || 0);
               const investorMaintenanceCost = parseFloat(investor.maintenance_cost || 0);
               const investorTotalCost = parseFloat(investor.commission_amount || 0) + parseFloat(investor.driver_commission_amount || 0) + parseFloat(investor.ads_cost || 0) + investorMiscCost + investorMaintenanceCost;
               const investorNetAmount = parseFloat(investor.total_revenue || 0) - investorTotalCost;
@@ -355,6 +357,7 @@ const InvestorsPage = () => {
                               <p className="text-[12px] text-slate-500 font-medium flex justify-between"><span>Giao nhận</span> <span className="text-rose-500 font-semibold">-{formatVND(investor.driver_commission_amount)}</span></p>
                               <p className="text-[12px] text-slate-500 font-medium flex justify-between"><span>Ads</span> <span className="text-rose-500 font-semibold">-{formatVND(investor.ads_cost)}</span></p>
                               <p className="text-[12px] text-slate-500 font-medium flex justify-between"><span>Phát sinh</span> <span className="text-rose-500 font-semibold">-{formatVND(investorMiscCost)}</span></p>
+                              <p className="text-[12px] text-slate-500 font-medium flex justify-between"><span>Bảo dưỡng</span> <span className="text-rose-500 font-semibold">-{formatVND(investorMaintenanceCost)}</span></p>
                             </div>
                           )}
                         </div>
@@ -429,6 +432,7 @@ const InvestorsPage = () => {
                               <p>Giao nhận: -{formatVND(investor.driver_commission_amount)}</p>
                               <p>Ads: -{formatVND(investor.ads_cost)}</p>
                               <p>Phát sinh: -{formatVND(investorMiscCost)}</p>
+                              <p>Bảo dưỡng: -{formatVND(investorMaintenanceCost)}</p>
                             </div>
                           )}
                         </div>

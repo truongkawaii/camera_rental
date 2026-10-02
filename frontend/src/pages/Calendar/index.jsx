@@ -183,7 +183,7 @@ const getResponsiveMonthDayWindowConfig = (width) => {
 
 export default function CalendarPage() {
   const { isAdmin, isCameraManager, isInvestor, isSaler, isDriver, user } = useAuth();
-  const canManageRentals = isCameraManager || isInvestor;
+  const canManageRentals = isCameraManager;
   const { toast, toasts, removeToast } = useToast();
 
   const [rentals, setRentals] = useState([]);
@@ -1039,7 +1039,7 @@ export default function CalendarPage() {
   useEffect(() => {
     bumpRowVersion();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeDisplayedDays, activeBusyMap, fSaler, isWeekView, isDriver]);
+  }, [activeDisplayedDays, activeBusyMap, fSaler, isWeekView, isDriver, isInvestor]);
 
   // ── Stable handler bundle (ref avoids changing calendarRows identity on every render) ──
   const handlersRef = useRef({});
@@ -1048,7 +1048,8 @@ export default function CalendarPage() {
     handleRentalHoverStart, handleRentalHoverEnd,
     openCreateModal, openEditModal,
     fSaler,
-    isDriver
+    isDriver,
+    readOnly: isInvestor
   };
 
   // ── Row rendering — lazy loads equipment via scroll; container height reserves space for all ──
@@ -1077,6 +1078,7 @@ export default function CalendarPage() {
             handleRentalHoverEnd={h.handleRentalHoverEnd}
             openCreateModal={h.openCreateModal}
             openEditModal={h.openEditModal}
+            readOnly={h.readOnly}
             dataRef={rowDataRef}
             dataVersion={rowDataVersion}
           />
@@ -1191,4 +1193,3 @@ export default function CalendarPage() {
     </div>
   );
 }
-

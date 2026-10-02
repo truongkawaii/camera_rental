@@ -323,12 +323,32 @@ router.get('/investor-revenue', authenticate, async (req, res) => {
           GROUP BY ac.branch_id
         ) branch_ads ON branch_ads.branch_id = e.branch_id
         GROUP BY owner.id, owner.full_name, owner.username, owner.commission_rate
+      ),
+      investor_misc_costs AS (
+        SELECT
+          owner.id as investor_id,
+          SUM(branch_misc.total_amount)::numeric as misc_cost
+        FROM (
+          SELECT DISTINCT e2.branch_id, e2.owner_id
+          FROM equipment e2
+          WHERE e2.is_deleted = false AND e2.branch_id IS NOT NULL AND e2.owner_id IS NOT NULL
+        ) e
+        JOIN investor_users owner ON owner.id = e.owner_id
+        JOIN (
+          SELECT mc.branch_id, SUM(mc.amount) as total_amount
+          FROM misc_costs mc
+          WHERE mc.is_deleted = false
+            AND COALESCE(mc.start_date, mc.date) <= $4::date
+            AND COALESCE(mc.end_date, mc.date) >= $3::date
+          GROUP BY mc.branch_id
+        ) branch_misc ON branch_misc.branch_id = e.branch_id
+        GROUP BY owner.id
       )
       SELECT
-        COALESCE(r.investor_id, m.investor_id, ads.investor_id) as investor_id,
-        COALESCE(r.investor_name, m.investor_name, ads.investor_name) as investor_name,
-        COALESCE(r.investor_username, m.investor_username, ads.investor_username) as investor_username,
-        COALESCE(r.investor_commission_rate, m.investor_commission_rate, ads.investor_commission_rate, 0)::numeric as investor_commission_rate,
+        COALESCE(r.investor_id, m.investor_id, ads.investor_id, misc.investor_id) as investor_id,
+        COALESCE(r.investor_name, m.investor_name, ads.investor_name, owner.full_name) as investor_name,
+        COALESCE(r.investor_username, m.investor_username, ads.investor_username, owner.username) as investor_username,
+        COALESCE(r.investor_commission_rate, m.investor_commission_rate, ads.investor_commission_rate, owner.commission_rate, 0)::numeric as investor_commission_rate,
         COALESCE(r.total_orders, 0)::int as total_orders,
         COALESCE(r.total_order_value, 0)::numeric as total_order_value,
         COALESCE(r.completed_orders, 0)::int as completed_orders,
@@ -337,22 +357,29 @@ router.get('/investor-revenue', authenticate, async (req, res) => {
         COALESCE(r.driver_commission_amount, 0)::numeric as driver_commission_amount,
         COALESCE(m.maintenance_cost, 0)::numeric as maintenance_cost,
         COALESCE(ads.ads_cost, 0)::numeric as ads_cost,
+        COALESCE(misc.misc_cost, 0)::numeric as misc_cost,
         COALESCE(d.orders, '[]'::json) as orders
       FROM investor_rental_stats r
       FULL OUTER JOIN investor_maintenance_stats m
         ON r.investor_id = m.investor_id
       FULL OUTER JOIN investor_ads_costs ads
         ON ads.investor_id = COALESCE(r.investor_id, m.investor_id)
+      FULL OUTER JOIN investor_misc_costs misc
+        ON misc.investor_id = COALESCE(r.investor_id, m.investor_id, ads.investor_id)
+      LEFT JOIN investor_users owner
+        ON owner.id = COALESCE(r.investor_id, m.investor_id, ads.investor_id, misc.investor_id)
       LEFT JOIN investor_order_details d
-        ON d.investor_id = COALESCE(r.investor_id, m.investor_id, ads.investor_id)
-      WHERE
+        ON d.investor_id = COALESCE(r.investor_id, m.investor_id, ads.investor_id, misc.investor_id)
+      WHERE (
         COALESCE(r.total_orders, 0) > 0
         OR COALESCE(r.total_order_value, 0) > 0
         OR COALESCE(r.total_revenue, 0) > 0
         OR COALESCE(m.maintenance_cost, 0) > 0
         OR COALESCE(ads.ads_cost, 0) > 0
-      ORDER BY CASE WHEN COALESCE(r.investor_id, m.investor_id, ads.investor_id, 0) = 0 THEN 1 ELSE 0 END, total_revenue DESC, investor_name ASC
-    `, [periodStartISO, periodEndISO, employeePeriodStartDate, employeePeriodEndDate]);
+        OR COALESCE(misc.misc_cost, 0) > 0
+      ) AND ($5::boolean OR COALESCE(r.investor_id, m.investor_id, ads.investor_id, misc.investor_id) = $6::int)
+      ORDER BY CASE WHEN COALESCE(r.investor_id, m.investor_id, ads.investor_id, misc.investor_id, 0) = 0 THEN 1 ELSE 0 END, total_revenue DESC, investor_name ASC
+    `, [periodStartISO, periodEndISO, employeePeriodStartDate, employeePeriodEndDate, hasRole(req.user, 'admin'), req.user.id]);
 
     // Process rows into the same format frontend expects
     const rows = result.rows.map(row => {
@@ -361,7 +388,8 @@ router.get('/investor-revenue', authenticate, async (req, res) => {
       const driver_commission_amount = parseFloat(row.driver_commission_amount || 0);
       const maintenance_cost = parseFloat(row.maintenance_cost || 0);
       const ads_cost = parseFloat(row.ads_cost || 0);
-      const net_amount = total_revenue - maintenance_cost - commission_amount - driver_commission_amount - ads_cost;
+      const misc_cost = parseFloat(row.misc_cost || 0);
+      const net_amount = total_revenue - maintenance_cost - commission_amount - driver_commission_amount - ads_cost - misc_cost;
 
       return {
         id: row.investor_id,
@@ -377,6 +405,7 @@ router.get('/investor-revenue', authenticate, async (req, res) => {
         total_revenue,
         maintenance_cost,
         ads_cost,
+        misc_cost,
         net_amount,
         orders: (row.orders || []).map(order => ({
           ...order,

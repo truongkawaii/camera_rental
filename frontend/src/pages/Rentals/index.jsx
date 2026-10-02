@@ -86,7 +86,7 @@ const Rentals = () => {
 
   const { toast, toasts, removeToast } = useToast();
   const { isAdmin, isCameraManager, isInvestor, isSaler, isDriver, hasRole, user } = useAuth();
-  const canManageRentals = isCameraManager || isInvestor;
+  const canManageRentals = isCameraManager;
   const canQuickStatusEdit = canManageRentals || hasRole('driver');
 
   // Handle search debouncing
@@ -168,6 +168,7 @@ const Rentals = () => {
 
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
+    if (isInvestor) return;
     // Validation
     if (!isCreatingCustomer && !formData.customer_id) {
       toast.error("Vui lòng chọn khách hàng");
@@ -319,6 +320,7 @@ const Rentals = () => {
   };
 
   const openCreateModal = async () => {
+    if (isInvestor) return;
     setEditingItem(null);
     setImagePreviews([]);
     setSelectedImageFiles([]);
@@ -331,6 +333,7 @@ const Rentals = () => {
   };
 
   const openEditModal = async (item) => {
+    if (isInvestor) return;
     setEditingItem(item);
     setImagePreviews(getAllImages(item.images));
     setSelectedImageFiles([]);
@@ -513,12 +516,12 @@ const Rentals = () => {
             </h1>
             <p className="text-gray-500 mt-1 md:mt-1.5 font-medium text-[13px] md:text-sm">Theo dõi và vận hành đơn hàng camera</p>
           </div>
-          <button
+          {!isInvestor && <button
             onClick={openCreateModal}
             className="h-[35px] px-5 md:px-7 bg-primary text-white rounded-2xl font-semibold uppercase tracking-widest shadow-xl shadow-primary/20 hover:shadow-primary/40 hover:-translate-y-1 active:translate-y-0 transition-all flex items-center gap-2 md:gap-2.5 w-full md:w-auto justify-center text-[11px] md:text-xs"
           >
             <Plus size={20} className="md:w-6 md:h-6" /> Tạo Đơn Mới
-          </button>
+          </button>}
         </div>
 
         <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
@@ -526,6 +529,7 @@ const Rentals = () => {
             loading={loading}
             rentals={rentals}
             isAdmin={isAdmin}
+            readOnly={isInvestor}
             canQuickStatusEdit={canQuickStatusEdit}
             STATUS_MAP={STATUS_MAP}
             equipment={equipment}

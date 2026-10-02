@@ -42,7 +42,7 @@ const Customers = () => {
   const [blacklisting, setBlacklisting] = useState(false);
 
   const { toasts, toast, removeToast } = useToast();
-  const { isAdmin } = useAuth();
+  const { isAdmin, isInvestor } = useAuth();
 
   useEffect(() => {
     if (!showModal) return;
@@ -283,13 +283,13 @@ const Customers = () => {
               )}
             </div>
 
-            <button
+            {!isInvestor && <button
               onClick={openAddModal}
               className="h-[35px] w-full md:w-auto bg-primary text-white px-6 rounded-xl flex items-center justify-center gap-2 hover:opacity-90 transition-all font-semibold shadow-lg shadow-primary/20 whitespace-nowrap"
             >
               <Plus size={20} />
               Thêm Khách Hàng
-            </button>
+            </button>}
           </div>
         </div>
 
@@ -347,7 +347,7 @@ const Customers = () => {
                     {customer.total_rentals || 0} đơn thuê
                   </div>
                   <div className="flex items-center gap-2">
-                    {customer.is_blacklisted ? (
+                    {!isInvestor && (customer.is_blacklisted ? (
                       <button
                         onClick={() => setUnblacklistTarget(customer)}
                         className="p-2 text-amber-600 hover:bg-amber-50 rounded-xl transition-colors border border-transparent hover:border-amber-100"
@@ -363,14 +363,14 @@ const Customers = () => {
                       >
                         <ShieldBan size={18} />
                       </button>
-                    )}
-                    <button
+                    ))}
+                    {!isInvestor && <button
                       onClick={() => openEditModal(customer)}
                       className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition-colors border border-transparent hover:border-blue-100"
                       title="Sửa khách hàng / Tải ảnh"
                     >
                       <Edit2 size={18} />
-                    </button>
+                    </button>}
                     {isAdmin && (
                       <button
                         onClick={() => setDeleteTarget(customer)}

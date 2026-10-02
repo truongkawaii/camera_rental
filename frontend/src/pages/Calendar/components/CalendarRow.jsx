@@ -96,7 +96,7 @@ const computeCellData = (displayedDays, busyMapForEq) => {
 // CalendarRowCells — inner component that re-renders when cell data changes
 // ═══════════════════════════════════════════════════════════════════
 const CalendarRowCells = React.memo(({
-  eq, displayedDays, busyMapForEq, activeCreatorIds, isDriver,
+  eq, displayedDays, busyMapForEq, activeCreatorIds, isDriver, readOnly,
   handleRentalHoverStart, handleRentalHoverEnd, openCreateModal, openEditModal,
 }) => {
   const isMaintenance = eq.condition === 'maintenance';
@@ -142,7 +142,7 @@ const CalendarRowCells = React.memo(({
                       '--rental-session-line': periods[0].lineColor,
                       ...CELL_INTERACTION_STYLE
                     }}
-                    className={`calendar-rental-segment min-h-0 w-full select-none ${statusStyle.bg} ${disableForDriver ? 'cursor-not-allowed' : 'cursor-pointer'} overflow-visible rounded-md active:scale-95 ${statusStyle.pattern} ${isSessionRental ? 'session-rental' : ''} ${isOtherSalerRental ? 'other-saler-rental' : ''} flex flex-col items-stretch justify-center`}
+                    className={`calendar-rental-segment min-h-0 w-full select-none ${statusStyle.bg} ${disableForDriver ? 'cursor-not-allowed' : readOnly ? 'cursor-default' : 'cursor-pointer'} overflow-visible rounded-md active:scale-95 ${statusStyle.pattern} ${isSessionRental ? 'session-rental' : ''} ${isOtherSalerRental ? 'other-saler-rental' : ''} flex flex-col items-stretch justify-center`}
                     onMouseEnter={e => { if (!disableForDriver) handleRentalHoverStart?.(rental, e); }}
                     onMouseMove={e => { if (!disableForDriver) handleRentalHoverStart?.(rental, e, true); }}
                     onMouseLeave={handleRentalHoverEnd}
@@ -151,8 +151,8 @@ const CalendarRowCells = React.memo(({
                     onTouchEnd={handleRentalHoverEnd}
                     onTouchCancel={handleRentalHoverEnd}
                     onContextMenu={preventContextMenu}
-                    onClick={() => { if (!disableForDriver && !rental.is_maintenance) { handleRentalHoverEnd?.(); openEditModal(rental); } }}
-                    onDoubleClick={() => { if (!disableForDriver && !rental.is_maintenance) { handleRentalHoverEnd?.(); openEditModal(rental); } }}
+                    onClick={() => { if (!readOnly && !disableForDriver && !rental.is_maintenance) { handleRentalHoverEnd?.(); openEditModal(rental); } }}
+                    onDoubleClick={() => { if (!readOnly && !disableForDriver && !rental.is_maintenance) { handleRentalHoverEnd?.(); openEditModal(rental); } }}
                   >
                     {periods.map(({ period, lineColor, connectsLeft, connectsRight }) => (
                       <span
@@ -174,7 +174,7 @@ const CalendarRowCells = React.memo(({
                     disabled={isMaintenance}
                     className={`min-h-0 w-full rounded-md active:scale-95 select-none flex flex-col items-stretch justify-center ${isMaintenance ? 'cursor-not-allowed border border-sky-100 bg-sky-50/70 text-sky-700' : 'calendar-empty-segment cursor-pointer'}`}
                     onContextMenu={preventContextMenu}
-                    onClick={() => { if (!isMaintenance) openCreateModal(eq, day.dateObj, periods[0].period); }}
+                    onClick={() => { if (!readOnly && !isMaintenance) openCreateModal(eq, day.dateObj, periods[0].period); }}
                   >
                     {periods.map(({ period }) => (
                       <span key={period} className="select-none flex-1 min-h-0 flex items-center justify-center text-[8px] md:text-[9px] lg:text-[10px] font-bold text-slate-500 leading-none">
@@ -202,7 +202,7 @@ const CalendarRow = React.memo(({
   handleHoverStart, handleHoverEnd,
   handleRentalHoverStart, handleRentalHoverEnd,
   openCreateModal, openEditModal,
-  dataRef, dataVersion,
+  dataRef, dataVersion, readOnly,
 }) => {
   const isMaintenance = eq.condition === 'maintenance';
 
@@ -267,6 +267,7 @@ const CalendarRow = React.memo(({
         busyMapForEq={busyMapForEq}
         activeCreatorIds={activeCreatorIds}
         isDriver={isDriver}
+        readOnly={readOnly}
         handleRentalHoverStart={handleRentalHoverStart}
         handleRentalHoverEnd={handleRentalHoverEnd}
         openCreateModal={openCreateModal}

@@ -706,6 +706,7 @@ const RentalList = React.memo(({
   loading = false,
   rentals = [],
   isAdmin = false,
+  readOnly = false,
   canQuickStatusEdit = false,
   STATUS_MAP = {},
   equipment = [],
@@ -1019,10 +1020,10 @@ const RentalList = React.memo(({
                     <Edit2 size={13} /> Trạng thái
                   </button>
                 )}
-                <button onClick={() => openEditModal(rental)}
+                {!readOnly && <button onClick={() => openEditModal(rental)}
                   className="w-9 h-9 flex items-center justify-center rounded-xl bg-blue-50 text-blue-500 hover:bg-blue-100 hover:-translate-y-0.5 transition-all">
                   <Edit2 size={15} />
-                </button>
+                </button>}
                 {isAdmin && (
                   <button onClick={() => setDeleteTarget(rental)}
                     className="w-9 h-9 flex items-center justify-center rounded-xl bg-rose-50 text-rose-500 hover:bg-rose-100 hover:-translate-y-0.5 transition-all">
@@ -1237,10 +1238,10 @@ const RentalList = React.memo(({
                           <SlidersHorizontal size={14} />
                         </button>
                       )}
-                      <button onClick={() => openEditModal(rental)} title="Sửa"
+                      {!readOnly && <button onClick={() => openEditModal(rental)} title="Sửa"
                         className="!w-9 !min-w-9 h-8 shrink-0 flex items-center justify-center rounded-xl bg-slate-50 text-slate-400 border border-slate-100 hover:bg-blue-50 hover:text-blue-500 hover:border-blue-200 transition-all">
                         <Edit2 size={14} />
-                      </button>
+                      </button>}
                       {isAdmin && (
                         <button onClick={() => setDeleteTarget(rental)} title="Xoá"
                           className="!w-9 !min-w-9 h-8 shrink-0 flex items-center justify-center rounded-xl bg-slate-50 text-slate-400 border border-slate-100 hover:bg-rose-50 hover:text-rose-500 hover:border-rose-200 transition-all">

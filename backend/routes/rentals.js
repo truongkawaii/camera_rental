@@ -1386,7 +1386,7 @@ router.post('/:id/recalculate-commission', authenticate, async (req, res) => {
     return res.status(400).json({ error: 'Invalid rental id' });
   }
 
-  const isAllowed = hasRole(req.user, 'admin', 'camera_manager', 'investor');
+  const isAllowed = hasRole(req.user, 'admin', 'camera_manager');
   if (!isAllowed) {
     return res.status(403).json({ error: 'Bạn không có quyền tính lại hoa hồng cho đơn thuê.' });
   }

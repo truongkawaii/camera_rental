@@ -808,7 +808,7 @@ const DashboardV1 = () => {
 
   const { toast, toasts, removeToast } = useToast();
   const { isAdmin, isCameraManager, isInvestor, isSaler, isDriver } = useAuth();
-  const canManageRentals = isCameraManager || isInvestor;
+  const canManageRentals = isCameraManager;
 
   const loadCounts = useCallback(async () => {
     try {
@@ -985,6 +985,10 @@ const DashboardV1 = () => {
   }, [branches, editingItem]);
 
   const openEditModal = async (item) => {
+    if (isInvestor) {
+      navigate('/rentals');
+      return;
+    }
     setEditingItem(item);
     setImagePreviews(getAllImages(item.images));
     setSelectedImageFiles([]);

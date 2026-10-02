@@ -88,7 +88,7 @@ const Equipment = ({ initialTab }) => {
       setActiveTab('equipment');
     }
   }, [location.pathname, searchParams]);
-  const canManage = isAdmin || isCameraManager || isInvestor;
+  const canManage = isAdmin || isCameraManager;
   const canEditOwner = isAdmin || isCameraManager;
   const equipmentStatsVisibility = ['sale', 'saler', 'manager', 'camera_manager'].includes(activeRole)
     || (!activeRole && (isSaler || isCameraManager) && !isAdmin)
@@ -755,7 +755,7 @@ const Equipment = ({ initialTab }) => {
         <ToastContainer toasts={toasts} onClose={removeToast} />
       </>
         ) : (
-          <MaintenanceTab equipmentList={allTemplates} />
+          <MaintenanceTab equipmentList={allTemplates} readOnly={isInvestor} />
         )}
       </div>
     </div>

@@ -13,7 +13,7 @@ const STATUS_MAP = {
   'Đã hủy': { label: 'Đã hủy', color: 'bg-slate-100 text-slate-700', icon: X }
 };
 
-const MaintenanceTab = ({ equipmentList = [] }) => {
+const MaintenanceTab = ({ equipmentList = [], readOnly = false }) => {
   const [maintenances, setMaintenances] = useState([]);
   const [loading, setLoading] = useState(true);
   
@@ -80,13 +80,13 @@ const MaintenanceTab = ({ equipmentList = [] }) => {
           </h2>
           <p className="text-sm text-slate-500 mt-1">{maintenances.length} lịch bảo trì</p>
         </div>
-        <button
+        {!readOnly && <button
           onClick={openAddModal}
           className="bg-orange-500 text-white px-4 py-2 rounded-xl flex items-center justify-center gap-2 hover:bg-orange-600 transition-colors font-semibold shadow-sm text-sm"
         >
           <Plus size={16} />
           Tạo lịch
-        </button>
+        </button>}
       </div>
 
       <div className="overflow-x-auto">
@@ -138,7 +138,7 @@ const MaintenanceTab = ({ equipmentList = [] }) => {
                       </div>
                     </td>
                     <td className="p-4 pr-6">
-                      <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {!readOnly && <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={() => openEditModal(item)}
                           className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-primary transition-colors"
@@ -157,7 +157,7 @@ const MaintenanceTab = ({ equipmentList = [] }) => {
                         >
                           Hủy
                         </button>
-                      </div>
+                      </div>}
                     </td>
                   </tr>
                 );
