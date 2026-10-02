@@ -405,21 +405,25 @@ const ensureCommissionSnapshotForCompletedRental = async (client, rentalId, acte
   };
 };
 
-// Rate edits apply to completed rentals in the open Vietnamese
-// calendar month. Earlier months and locked payroll snapshots stay untouched.
-const recalculateCurrentMonthCommissions = async (client, userIds, roleName, actedByUserId) => {
+// Apply rate and assignment edits to the current and immediately preceding
+// Vietnamese calendar months. Older months and locked payroll stay untouched.
+const recalculateRecentMonthCommissions = async (client, userIds, roleName, actedByUserId) => {
   if (!['saler', 'driver'].includes(roleName) || userIds.length === 0) {
-    return { recalculated: 0, skippedLocked: false };
+    return { recalculated: 0, skippedLocked: false, skippedLockedMonths: [] };
   }
 
-  const locked = await client.query(`
-    SELECT 1 FROM payroll_snapshots
-    WHERE month = to_char(NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM')
-      AND is_deleted = false
-    LIMIT 1
+  const months = await client.query(`
+    SELECT to_char(NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM') AS current_month,
+           to_char((NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh') - INTERVAL '1 month', 'YYYY-MM') AS previous_month
   `);
-  if (locked.rows.length > 0) {
-    return { recalculated: 0, skippedLocked: true };
+  const { current_month: currentMonth, previous_month: previousMonth } = months.rows[0];
+  const locked = await client.query(`
+    SELECT DISTINCT month FROM payroll_snapshots
+    WHERE month = ANY($1::text[]) AND is_deleted = false
+  `, [[previousMonth, currentMonth]]);
+  const skippedLockedMonths = locked.rows.map(row => row.month);
+  if (skippedLockedMonths.length === 2) {
+    return { recalculated: 0, skippedLocked: true, skippedLockedMonths };
   }
 
   const rentals = await client.query(`
@@ -427,22 +431,23 @@ const recalculateCurrentMonthCommissions = async (client, userIds, roleName, act
     FROM rentals ren
     WHERE ren.status = 'completed'
       AND ren.is_deleted = false
-      AND ren.returned_at >= (date_trunc('month', NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh') AT TIME ZONE 'Asia/Ho_Chi_Minh')
+      AND ren.returned_at >= ((date_trunc('month', NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh') - INTERVAL '1 month') AT TIME ZONE 'Asia/Ho_Chi_Minh')
       AND ren.returned_at < ((date_trunc('month', NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh') + INTERVAL '1 month') AT TIME ZONE 'Asia/Ho_Chi_Minh')
+      AND to_char(ren.returned_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM') <> ALL($3::text[])
       AND (CASE WHEN $2 = 'saler' THEN ren.user_id ELSE ren.handover_user_id END) = ANY($1::int[])
     ORDER BY ren.id
-  `, [userIds, roleName]);
+  `, [userIds, roleName, skippedLockedMonths]);
 
   for (const rental of rentals.rows) {
     await ensureCommissionSnapshotForCompletedRental(client, rental.id, actedByUserId, { forceRecalc: true });
   }
-  return { recalculated: rentals.rows.length, skippedLocked: false };
+  return { recalculated: rentals.rows.length, skippedLocked: skippedLockedMonths.length > 0, skippedLockedMonths };
 };
 
 module.exports = {
   calculateCommissionPreview,
   ensureCommissionSnapshotForCompletedRental,
-  recalculateCurrentMonthCommissions,
+  recalculateRecentMonthCommissions,
   getActiveRuleSet,
   getRuleSetForUserRole,
   getActiveHierarchyShares

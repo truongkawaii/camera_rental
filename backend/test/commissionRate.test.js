@@ -4,7 +4,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const {
   calculateCommissionPreview,
-  recalculateCurrentMonthCommissions
+  recalculateRecentMonthCommissions
 } = require('../services/commissionService');
 
 test('commission preview changes from 30% to 15% and records an assigned 0% rate', async () => {
@@ -44,14 +44,17 @@ test('unassigned employee gets a zero ledger line instead of legacy payroll fall
   assert.equal(preview.lines[0].rate_percent, 0);
 });
 
-test('current-month selection uses completed date in Vietnam and respects locked payroll', async () => {
+test('recalculation selects only current and previous Vietnam months and skips locked payroll', async () => {
   let rentalQuery = '';
   let insertedLine = null;
+  let lockedMonths = [];
   const client = {
     async query(sql, params) {
-      if (sql.includes('FROM payroll_snapshots')) return { rows: [] };
+      if (sql.includes('AS current_month')) return { rows: [{ current_month: '2026-10', previous_month: '2026-09' }] };
+      if (sql.includes('FROM payroll_snapshots')) return { rows: lockedMonths.map(month => ({ month })) };
       if (sql.includes('SELECT DISTINCT ren.id')) {
         rentalQuery = sql;
+        assert.deepEqual(params, [[7], 'saler', lockedMonths]);
         return { rows: [{ id: 3 }] };
       }
       if (sql.includes('SELECT id, status, total_price, user_id, handover_user_id')) {
@@ -67,20 +70,27 @@ test('current-month selection uses completed date in Vietnam and respects locked
     }
   };
   assert.deepEqual(
-    await recalculateCurrentMonthCommissions(client, [7], 'saler', 1),
-    { recalculated: 1, skippedLocked: false }
+    await recalculateRecentMonthCommissions(client, [7], 'saler', 1),
+    { recalculated: 1, skippedLocked: false, skippedLockedMonths: [] }
   );
   assert.equal(insertedLine[0], 3);
   assert.equal(insertedLine[4], 15);
   assert.equal(insertedLine[6], 150);
-  assert.match(rentalQuery, /ren\.returned_at >= .*Asia\/Ho_Chi_Minh/);
+  assert.match(rentalQuery, /ren\.returned_at >= .*INTERVAL '1 month'.*Asia\/Ho_Chi_Minh/);
   assert.match(rentalQuery, /ren\.returned_at < .*INTERVAL '1 month'/);
+  assert.match(rentalQuery, /to_char\(ren\.returned_at AT TIME ZONE 'Asia\/Ho_Chi_Minh'.*<> ALL/);
   assert.doesNotMatch(rentalQuery, /inserted_at/);
 
-  const lockedClient = { async query() { return { rows: [{ id: 1 }] }; } };
+  lockedMonths = ['2026-09'];
   assert.deepEqual(
-    await recalculateCurrentMonthCommissions(lockedClient, [7], 'saler', 1),
-    { recalculated: 0, skippedLocked: true }
+    await recalculateRecentMonthCommissions(client, [7], 'saler', 1),
+    { recalculated: 1, skippedLocked: true, skippedLockedMonths: ['2026-09'] }
+  );
+
+  lockedMonths = ['2026-09', '2026-10'];
+  assert.deepEqual(
+    await recalculateRecentMonthCommissions(client, [7], 'saler', 1),
+    { recalculated: 0, skippedLocked: true, skippedLockedMonths: ['2026-09', '2026-10'] }
   );
 });
 
@@ -108,7 +118,7 @@ test('saving a saler rate recalculates assigned users before commit', async () =
   };
   require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: { pool: { connect: async () => client } } };
   require.cache[servicePath] = { id: servicePath, filename: servicePath, loaded: true, exports: {
-    recalculateCurrentMonthCommissions: async (_client, userIds) => {
+    recalculateRecentMonthCommissions: async (_client, userIds) => {
       recalculatedUsers = userIds;
       return { recalculated: 2, skippedLocked: false };
     }
@@ -143,7 +153,7 @@ test('saving a saler rate recalculates assigned users before commit', async () =
   }
 });
 
-test('moving an employee between rule sets recalculates current month in the same transaction', async () => {
+test('moving an employee between rule sets recalculates editable months in the same transaction', async () => {
   const dbPath = require.resolve('../utils/db');
   const servicePath = require.resolve('../services/commissionService');
   const loggerPath = require.resolve('../utils/logger');
@@ -163,7 +173,7 @@ test('moving an employee between rule sets recalculates current month in the sam
   };
   require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: { pool: { connect: async () => client } } };
   require.cache[servicePath] = { id: servicePath, filename: servicePath, loaded: true, exports: {
-    recalculateCurrentMonthCommissions: async (_client, userIds, roleName) => {
+    recalculateRecentMonthCommissions: async (_client, userIds, roleName) => {
       recalculations.push({ userIds, roleName, queryCount: queries.length });
       return { recalculated: 1, skippedLocked: false };
     }

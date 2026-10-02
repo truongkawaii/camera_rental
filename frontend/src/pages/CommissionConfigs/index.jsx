@@ -34,6 +34,13 @@ const formatRuleName = (name) => {
   return name || '';
 };
 
+const recalculationMessage = (data, action) => {
+  const count = data?.recalculated_rentals || 0;
+  const lockedMonths = data?.recalculation_skipped_locked_months || [];
+  const lockedNote = lockedMonths.length ? ` Tháng ${lockedMonths.join(', ')} đã chốt nên được giữ nguyên.` : '';
+  return `${action} Đã tính lại ${count} đơn trong tháng này và tháng trước.${lockedNote}`;
+};
+
 const ROLE_LABELS = {
   admin: 'Quản trị viên',
   camera_manager: 'Quản lý thiết bị',
@@ -118,9 +125,7 @@ const UserAssignmentPanel = ({ item, allUsers, toast, onCountChange, reloadParen
     setAddingUser(true);
     try {
       const response = await addUserToRuleSet(item.id, user.id, selectedRole);
-      toast.success(response.data?.recalculation_skipped_locked
-        ? `Đã đổi quy tắc cho ${user.full_name || user.username}. Lương tháng này đã chốt.`
-        : `Đã đổi quy tắc cho ${user.full_name || user.username} và tính lại ${response.data?.recalculated_rentals || 0} đơn tháng này.`);
+      toast.success(recalculationMessage(response.data, `Đã đổi quy tắc cho ${user.full_name || user.username}.`));
       await loadAssignedUsers();
       reloadParent?.();
       setUserToAdd(null);
@@ -142,9 +147,7 @@ const UserAssignmentPanel = ({ item, allUsers, toast, onCountChange, reloadParen
     setRemovingUserId(user.id);
     try {
       const response = await removeUserFromRuleSet(item.id, user.id, user.assigned_role);
-      toast.success(response.data?.recalculation_skipped_locked
-        ? `Đã gỡ ${user.full_name || user.username}. Lương tháng này đã chốt.`
-        : `Đã gỡ ${user.full_name || user.username} và tính lại ${response.data?.recalculated_rentals || 0} đơn tháng này.`);
+      toast.success(recalculationMessage(response.data, `Đã gỡ ${user.full_name || user.username}.`));
       await loadAssignedUsers();
       reloadParent?.();
       setUserToRemove(null);
@@ -557,11 +560,9 @@ const CommissionConfigs = () => {
         }));
       }
 
-      toast.success(rateResponse?.data?.recalculation_skipped_locked
-        ? 'Đã cập nhật tỷ lệ. Lương tháng này đã chốt nên số tiền giữ nguyên.'
-        : rateResponse
-          ? `Đã cập nhật bộ quy tắc và tính lại ${rateResponse.data?.recalculated_rentals || 0} đơn tháng này.`
-          : 'Đã cập nhật bộ quy tắc');
+      toast.success(rateResponse
+        ? recalculationMessage(rateResponse.data, 'Đã cập nhật bộ quy tắc.')
+        : 'Đã cập nhật bộ quy tắc');
       setEditingItemId(null);
       await loadData();
     } catch (error) {
@@ -631,9 +632,7 @@ const CommissionConfigs = () => {
         ? { saler: newRate }
         : { driver: newRate };
       const rateResponse = await updateCommissionRates(id, payload);
-      toast.success(rateResponse.data?.recalculation_skipped_locked
-        ? 'Đã cập nhật tỷ lệ. Lương tháng này đã chốt nên số tiền giữ nguyên.'
-        : `Cập nhật tỷ lệ thành công, đã tính lại ${rateResponse.data?.recalculated_rentals || 0} đơn tháng này.`);
+      toast.success(recalculationMessage(rateResponse.data, 'Đã cập nhật tỷ lệ.'));
 
       // Lightweight reload: refresh just the configs list without loading overlay
       try {
@@ -866,7 +865,7 @@ const CommissionConfigs = () => {
             {/* Legend */}
             <div className="mt-5 pt-4 border-t border-gray-100">
               <p className="text-[11px] text-gray-400 leading-relaxed">
-                <span className="font-semibold text-gray-500">Lưu ý:</span> Chỉ bộ quy tắc <span className="text-emerald-600 font-semibold">Đang dùng</span> mới được áp dụng khi tính hoa hồng trong rental. Nhân viên phải được gán vào bộ quy tắc đang kích hoạt để nhận hoa hồng.
+                <span className="font-semibold text-gray-500">Lưu ý:</span> Chỉ bộ quy tắc <span className="text-emerald-600 font-semibold">Đang dùng</span> mới được áp dụng khi tính hoa hồng trong rental. Nhân viên phải được gán vào bộ quy tắc đang kích hoạt để nhận hoa hồng. Thay đổi tỷ lệ hoặc phân công sẽ tính lại tháng này và tháng trước nếu lương chưa chốt.
               </p>
             </div>
           </div>

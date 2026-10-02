@@ -2,7 +2,7 @@ const express = require('express');
 const { pool } = require('../utils/db');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { logActivity } = require('../utils/logger');
-const { recalculateCurrentMonthCommissions } = require('../services/commissionService');
+const { recalculateRecentMonthCommissions } = require('../services/commissionService');
 
 const router = express.Router();
 
@@ -216,7 +216,7 @@ router.post('/:id/users', authenticate, requireAdmin, async (req, res) => {
       [id, userId, roleName, req.user.id]
     );
 
-    const recalculation = await recalculateCurrentMonthCommissions(client, [userId], roleName, req.user.id);
+    const recalculation = await recalculateRecentMonthCommissions(client, [userId], roleName, req.user.id);
     await client.query('COMMIT');
 
     // Log removal from old rule set (if applicable)
@@ -231,7 +231,8 @@ router.post('/:id/users', authenticate, requireAdmin, async (req, res) => {
     return res.status(201).json({
       message: `User assigned to rule set as ${roleName}`,
       recalculated_rentals: recalculation.recalculated,
-      recalculation_skipped_locked: recalculation.skippedLocked
+      recalculation_skipped_locked: recalculation.skippedLocked,
+      recalculation_skipped_locked_months: recalculation.skippedLockedMonths
     });
   } catch (error) {
     await client.query('ROLLBACK');
@@ -283,11 +284,11 @@ router.delete('/:id/users/:userId', authenticate, requireAdmin, async (req, res)
     }
 
     let recalculatedRentals = 0;
-    let skippedLocked = false;
+    const skippedLockedMonths = new Set();
     for (const removedRole of new Set(result.rows.map(row => row.role_name))) {
-      const recalculation = await recalculateCurrentMonthCommissions(client, [userId], removedRole, req.user.id);
+      const recalculation = await recalculateRecentMonthCommissions(client, [userId], removedRole, req.user.id);
       recalculatedRentals += recalculation.recalculated;
-      skippedLocked ||= recalculation.skippedLocked;
+      for (const month of recalculation.skippedLockedMonths) skippedLockedMonths.add(month);
     }
     await client.query('COMMIT');
 
@@ -300,7 +301,7 @@ router.delete('/:id/users/:userId', authenticate, requireAdmin, async (req, res)
     const targetUsername = userInfo.rows[0]?.username || `#${userId}`;
     await logActivity('UPDATE', 'commission_config', id, `Gỡ user "${targetUsername}" khỏi bộ quy tắc "${rsName}"`, req.user.id);
 
-    return res.json({ message: 'User removed from rule set', recalculated_rentals: recalculatedRentals, recalculation_skipped_locked: skippedLocked });
+    return res.json({ message: 'User removed from rule set', recalculated_rentals: recalculatedRentals, recalculation_skipped_locked: skippedLockedMonths.size > 0, recalculation_skipped_locked_months: [...skippedLockedMonths] });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Remove user from rule set error:', error);
@@ -611,14 +612,14 @@ router.put('/:id/rates', authenticate, requireAdmin, async (req, res) => {
       return res.status(404).json({ error: 'Rule set not found or already deleted' });
     }
 
-    let recalculation = { recalculated: 0, skippedLocked: false };
+    let recalculation = { recalculated: 0, skippedLocked: false, skippedLockedMonths: [] };
     if (oldRateResult.rows[0].is_effective_now) {
       const assignedUsers = await client.query(
         `SELECT user_id FROM commission_rule_set_users
          WHERE rule_set_id = $1 AND role_name = $2 AND is_deleted = false`,
         [id, ruleType]
       );
-      recalculation = await recalculateCurrentMonthCommissions(
+      recalculation = await recalculateRecentMonthCommissions(
         client,
         assignedUsers.rows.map(row => row.user_id),
         ruleType,
@@ -637,7 +638,8 @@ router.put('/:id/rates', authenticate, requireAdmin, async (req, res) => {
     return res.json({
       ...result.rows[0],
       recalculated_rentals: recalculation.recalculated,
-      recalculation_skipped_locked: recalculation.skippedLocked
+      recalculation_skipped_locked: recalculation.skippedLocked,
+      recalculation_skipped_locked_months: recalculation.skippedLockedMonths
     });
   } catch (error) {
     await client.query('ROLLBACK');
