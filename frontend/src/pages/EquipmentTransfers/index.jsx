@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import {
   getEquipmentTransfers, createEquipmentTransfer, approveTransfer,
   rejectTransfer, completeTransfer, cancelTransfer, deleteEquipmentTransfer,
-  getBranches, getEquipment, getBranchTransferStats
+  getBranches, getEquipment, getBranchTransferStats, getBranchEquipment
 } from '../../api/client';
 import {
   ArrowRightLeft, Plus, Check, X, Ban, Trash2,
   Clock, CheckCircle2, XCircle, PackageCheck, ChevronDown,
-  Building2, ArrowDownRight, ArrowUpRight, Layers
+  Building2, ArrowDownRight, ArrowUpRight, Layers, Eye, Search, Package, RefreshCw
 } from 'lucide-react';
 import { useToast, ToastContainer } from '../../components/Toast';
 import ModernMonthPicker from '../../components/ModernMonthPicker';
@@ -35,11 +35,143 @@ const StatusBadge = ({ status }) => {
   );
 };
 
+const BranchEquipmentModal = ({ branch, onClose }) => {
+  const [equipment, setEquipment] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [retryKey, setRetryKey] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError('');
+    getBranchEquipment(branch.id)
+      .then((response) => {
+        if (active) setEquipment(response.data?.equipment || []);
+      })
+      .catch((err) => {
+        if (active) setError(err.response?.data?.error || 'Không thể tải danh sách thiết bị');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [branch.id, retryKey]);
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKeyDown = (event) => { if (event.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [onClose]);
+
+  const normalizedSearch = search.trim().toLocaleLowerCase('vi-VN');
+  const visibleEquipment = normalizedSearch
+    ? equipment.filter((item) => [item.code, item.name, item.category, item.brand, item.model]
+      .some((value) => String(value || '').toLocaleLowerCase('vi-VN').includes(normalizedSearch)))
+    : equipment;
+  const transferredIn = equipment.filter((item) => item.original_branch_id && Number(item.original_branch_id) !== Number(branch.id)).length;
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-[2px] sm:p-6"
+      onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}
+    >
+      <div role="dialog" aria-modal="true" aria-labelledby="branch-equipment-title" className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-gradient-to-r from-indigo-50 via-white to-white px-5 py-5 sm:px-7">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-600">
+              <Building2 size={21} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-600">Thiết bị hiện có tại cơ sở</p>
+              <h2 id="branch-equipment-title" className="mt-0.5 text-lg font-extrabold leading-tight text-slate-900 sm:text-xl">{branch.name}</h2>
+              <p className="mt-1 text-xs text-slate-500">Bao gồm thiết bị gốc và thiết bị đã chuyển đến.</p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Đóng danh sách thiết bị" className="rounded-xl p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="border-b border-slate-100 px-5 py-4 sm:px-7">
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <span className="rounded-lg bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700">{loading ? '…' : equipment.length} thiết bị tại cơ sở</span>
+            {!loading && transferredIn > 0 && <span className="rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">{transferredIn} chuyển đến</span>}
+            {branch.code && <span className="rounded-lg bg-slate-100 px-2.5 py-1 font-mono text-xs font-semibold text-slate-600">{branch.code}</span>}
+          </div>
+          <label className="relative block">
+            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Tìm theo tên, mã, danh mục, hãng..."
+              aria-label="Tìm thiết bị tại cơ sở"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm text-slate-800 outline-none transition-colors focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+            />
+          </label>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-3 sm:px-7">
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 py-16 text-sm text-slate-500"><RefreshCw size={17} className="animate-spin text-indigo-500" /> Đang tải thiết bị...</div>
+          ) : error ? (
+            <div className="py-14 text-center">
+              <p className="text-sm text-rose-600">{error}</p>
+              <button type="button" onClick={() => setRetryKey((value) => value + 1)} className="mt-3 rounded-xl bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100">Thử lại</button>
+            </div>
+          ) : visibleEquipment.length === 0 ? (
+            <div className="py-14 text-center text-slate-500">
+              <Package size={30} className="mx-auto mb-2 text-slate-300" />
+              <p className="text-sm">{search ? 'Không tìm thấy thiết bị phù hợp.' : 'Cơ sở này hiện chưa có thiết bị.'}</p>
+            </div>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {visibleEquipment.map((item) => {
+                const isTransferred = item.original_branch_id && Number(item.original_branch_id) !== Number(branch.id);
+                return (
+                  <li key={item.id} className="flex items-start gap-3 py-3.5">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500"><Package size={18} /></div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="text-sm font-bold text-slate-900">{item.name}</span>
+                        {isTransferred && <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">Chuyển đến</span>}
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+                        <span className="font-mono font-semibold text-indigo-600">{item.code || `#${item.id}`}</span>
+                        {item.category && <><span className="text-slate-300">•</span><span>{item.category}</span></>}
+                        {(item.brand || item.model) && <><span className="text-slate-300">•</span><span>{[item.brand, item.model].filter(Boolean).join(' / ')}</span></>}
+                      </div>
+                      {isTransferred && item.original_branch_name && <p className="mt-1 text-[11px] text-emerald-700">Từ cơ sở gốc: {item.original_branch_name}</p>}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/70 px-5 py-3 sm:px-7">
+          <span className="text-xs text-slate-500">{!loading && !error ? `Đang hiển thị ${visibleEquipment.length}/${equipment.length} thiết bị` : 'Danh sách theo vị trí thực tế hiện tại'}</span>
+          <button type="button" onClick={onClose} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100">Đóng</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const EquipmentTransfers = () => {
   const { toasts, removeToast, toast } = useToast();
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   const [transfers, setTransfers] = useState([]);
   const [branchStats, setBranchStats] = useState([]);
+  const [detailBranch, setDetailBranch] = useState(null);
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({ equipment_id: '', to_branch_id: '', reason: '', notes: '' });
@@ -278,6 +410,14 @@ const EquipmentTransfers = () => {
                         {b.initial_count} - {b.transferred_out} + {b.transferred_in} = <strong className="text-indigo-600">{b.current_count}</strong>
                       </span>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => setDetailBranch(b)}
+                      className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-700 transition-colors hover:border-indigo-300 hover:bg-indigo-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500"
+                      aria-label={`Xem danh sách thiết bị tại ${b.name}`}
+                    >
+                      <Eye size={14} /> Xem thiết bị <span className="font-normal text-indigo-500">({b.current_count})</span>
+                    </button>
                   </div>
                 </div>
               );
@@ -422,6 +562,7 @@ const EquipmentTransfers = () => {
       )}
 
       <ConfirmationModal {...confirmModal} onClose={() => setConfirmModal(prev => ({ ...prev, show: false }))} />
+      {detailBranch && <BranchEquipmentModal branch={detailBranch} onClose={() => setDetailBranch(null)} />}
       <ToastContainer toasts={toasts} onClose={removeToast} />
     </div>
   );

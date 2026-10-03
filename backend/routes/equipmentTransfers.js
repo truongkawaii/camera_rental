@@ -92,6 +92,40 @@ router.get('/branch-stats', authenticate, async (req, res) => {
   }
 });
 
+// Current equipment at a branch, using the same location rule as branch-stats.
+router.get('/branch-stats/:branchId/equipment', authenticate, requireTransferManager, async (req, res) => {
+  const branchId = Number(req.params.branchId);
+  if (!Number.isInteger(branchId) || branchId <= 0) {
+    return res.status(400).json({ error: 'Mã cơ sở không hợp lệ' });
+  }
+
+  try {
+    const branchResult = await pool.query(
+      'SELECT id, name, code FROM branches WHERE id = $1 AND is_deleted = false',
+      [branchId]
+    );
+    if (branchResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy cơ sở' });
+    }
+
+    const equipmentResult = await pool.query(`
+      SELECT e.id, e.code, e.name, e.category, e.brand, e.model,
+             e.branch_id AS original_branch_id,
+             origin.name AS original_branch_name
+      FROM equipment e
+      LEFT JOIN branches origin ON origin.id = e.branch_id
+      WHERE e.is_deleted = false
+        AND COALESCE(e.current_branch_id, e.branch_id) = $1
+      ORDER BY e.name ASC, e.code ASC, e.id ASC
+    `, [branchId]);
+
+    return res.json({ branch: branchResult.rows[0], equipment: equipmentResult.rows });
+  } catch (error) {
+    console.error('Fetch branch equipment detail error:', error);
+    return res.status(500).json({ error: 'Không thể tải danh sách thiết bị tại cơ sở' });
+  }
+});
+
 // ─────────────────────────────────────────────────────────────────────
 // GET /api/equipment-transfers/:id
 // ─────────────────────────────────────────────────────────────────────
