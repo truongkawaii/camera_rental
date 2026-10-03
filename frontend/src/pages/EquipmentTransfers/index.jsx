@@ -16,6 +16,8 @@ import CustomSelect from '../../components/CustomSelect';
 
 const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
 const fmtDateTime = (iso) => iso ? new Date(iso).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+const equipmentModel = (item) => item.model?.trim() || item.name?.trim() || 'Chưa có model';
+const modelKey = (item) => equipmentModel(item).toLocaleLowerCase('vi-VN');
 
 const STATUS_MAP = {
   pending: { label: 'Chờ duyệt', color: 'bg-yellow-100 text-yellow-700', icon: Clock },
@@ -40,6 +42,7 @@ const BranchEquipmentModal = ({ branch, onClose }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+  const [selectedModel, setSelectedModel] = useState('');
   const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
@@ -71,10 +74,26 @@ const BranchEquipmentModal = ({ branch, onClose }) => {
   }, [onClose]);
 
   const normalizedSearch = search.trim().toLocaleLowerCase('vi-VN');
-  const visibleEquipment = normalizedSearch
-    ? equipment.filter((item) => [item.code, item.name, item.category, item.brand, item.model]
+  const modelCounts = new Map();
+  for (const item of equipment) {
+    const key = modelKey(item);
+    const group = modelCounts.get(key);
+    if (group) group.count += 1;
+    else modelCounts.set(key, { key, name: equipmentModel(item), count: 1 });
+  }
+  const modelOptions = [...modelCounts.values()].sort((a, b) => a.name.localeCompare(b.name, 'vi'));
+  const visibleEquipment = equipment.filter((item) =>
+    (!selectedModel || modelKey(item) === selectedModel) &&
+    (!normalizedSearch || [item.code, item.name, item.category, item.brand, item.model]
       .some((value) => String(value || '').toLocaleLowerCase('vi-VN').includes(normalizedSearch)))
-    : equipment;
+  );
+  const visibleGroups = new Map();
+  for (const item of visibleEquipment) {
+    const key = modelKey(item);
+    if (!visibleGroups.has(key)) visibleGroups.set(key, { key, name: equipmentModel(item), items: [] });
+    visibleGroups.get(key).items.push(item);
+  }
+  const sortedGroups = [...visibleGroups.values()].sort((a, b) => a.name.localeCompare(b.name, 'vi'));
   const transferredIn = equipment.filter((item) => item.original_branch_id && Number(item.original_branch_id) !== Number(branch.id)).length;
 
   return (
@@ -102,20 +121,32 @@ const BranchEquipmentModal = ({ branch, onClose }) => {
         <div className="border-b border-slate-100 px-5 py-4 sm:px-7">
           <div className="flex flex-wrap items-center gap-2 mb-3">
             <span className="rounded-lg bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700">{loading ? '…' : equipment.length} thiết bị tại cơ sở</span>
+            {!loading && <span className="rounded-lg bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700">{modelOptions.length} model</span>}
             {!loading && transferredIn > 0 && <span className="rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">{transferredIn} chuyển đến</span>}
             {branch.code && <span className="rounded-lg bg-slate-100 px-2.5 py-1 font-mono text-xs font-semibold text-slate-600">{branch.code}</span>}
           </div>
-          <label className="relative block">
-            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Tìm theo tên, mã, danh mục, hãng..."
-              aria-label="Tìm thiết bị tại cơ sở"
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm text-slate-800 outline-none transition-colors focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
-            />
-          </label>
+          <div className="grid gap-2.5 sm:grid-cols-[minmax(0,1fr)_220px]">
+            <label className="relative block">
+              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Tìm theo tên, mã, danh mục, hãng..."
+                aria-label="Tìm thiết bị tại cơ sở"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm text-slate-800 outline-none transition-colors focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+              />
+            </label>
+            <select
+              value={selectedModel}
+              onChange={(event) => setSelectedModel(event.target.value)}
+              aria-label="Lọc thiết bị theo model"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition-colors focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+            >
+              <option value="">Tất cả model ({equipment.length})</option>
+              {modelOptions.map((model) => <option key={model.key} value={model.key}>{model.name} ({model.count})</option>)}
+            </select>
+          </div>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-3 sm:px-7">
@@ -129,31 +160,41 @@ const BranchEquipmentModal = ({ branch, onClose }) => {
           ) : visibleEquipment.length === 0 ? (
             <div className="py-14 text-center text-slate-500">
               <Package size={30} className="mx-auto mb-2 text-slate-300" />
-              <p className="text-sm">{search ? 'Không tìm thấy thiết bị phù hợp.' : 'Cơ sở này hiện chưa có thiết bị.'}</p>
+              <p className="text-sm">{search || selectedModel ? 'Không tìm thấy thiết bị phù hợp.' : 'Cơ sở này hiện chưa có thiết bị.'}</p>
             </div>
           ) : (
-            <ul className="divide-y divide-slate-100">
-              {visibleEquipment.map((item) => {
-                const isTransferred = item.original_branch_id && Number(item.original_branch_id) !== Number(branch.id);
-                return (
-                  <li key={item.id} className="flex items-start gap-3 py-3.5">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500"><Package size={18} /></div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <span className="text-sm font-bold text-slate-900">{item.name}</span>
-                        {isTransferred && <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">Chuyển đến</span>}
-                      </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
-                        <span className="font-mono font-semibold text-indigo-600">{item.code || `#${item.id}`}</span>
-                        {item.category && <><span className="text-slate-300">•</span><span>{item.category}</span></>}
-                        {(item.brand || item.model) && <><span className="text-slate-300">•</span><span>{[item.brand, item.model].filter(Boolean).join(' / ')}</span></>}
-                      </div>
-                      {isTransferred && item.original_branch_name && <p className="mt-1 text-[11px] text-emerald-700">Từ cơ sở gốc: {item.original_branch_name}</p>}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+            <div className="space-y-4">
+              {sortedGroups.map((group) => (
+                <section key={group.key}>
+                  <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-indigo-100 bg-white/95 py-2 backdrop-blur-sm">
+                    <h3 className="min-w-0 truncate text-xs font-extrabold uppercase tracking-wide text-indigo-700" title={group.name}>{group.name}</h3>
+                    <span className="shrink-0 rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-600">{group.items.length} thiết bị</span>
+                  </div>
+                  <ul className="divide-y divide-slate-100">
+                    {group.items.map((item) => {
+                      const isTransferred = item.original_branch_id && Number(item.original_branch_id) !== Number(branch.id);
+                      return (
+                        <li key={item.id} className="flex items-start gap-3 py-3.5">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500"><Package size={18} /></div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <span className="text-sm font-bold text-slate-900">{item.name}</span>
+                              {isTransferred && <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">Chuyển đến</span>}
+                            </div>
+                            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+                              <span className="font-mono font-semibold text-indigo-600">{item.code || `#${item.id}`}</span>
+                              {item.category && <><span className="text-slate-300">•</span><span>{item.category}</span></>}
+                              {(item.brand || item.model) && <><span className="text-slate-300">•</span><span>{[item.brand, item.model].filter(Boolean).join(' / ')}</span></>}
+                            </div>
+                            {isTransferred && item.original_branch_name && <p className="mt-1 text-[11px] text-emerald-700">Từ cơ sở gốc: {item.original_branch_name}</p>}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              ))}
+            </div>
           )}
         </div>
 
