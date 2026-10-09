@@ -10,6 +10,7 @@ import { checkBlacklist, previewRentalCommission } from '../../../api/client';
 
 const PERIOD_OPTIONS = ['sáng', 'chiều', 'tối'];
 const MAX_DISCOUNT_AMOUNT = 50000;
+const MAX_DISCOUNT_PERCENT = 10;
 const PERIOD_TIME_RANGE = {
   'sáng': { start: '22:30', end: '12:00', startDayOffset: -1 },
   'chiều': { start: '12:00', end: '18:00', startDayOffset: 0 },
@@ -363,16 +364,15 @@ const RentalModal = ({
     const totalBeforeDiscount = itemsTotal + accessoriesTotal;
     let discountAmountVal = 0;
     if (formData.discount_type === 'percentage') {
-      discountAmountVal = Math.round(totalBeforeDiscount * (Number(formData.discount_amount || 0) / 100));
+      const pct = Math.min(Number(formData.discount_amount || 0), MAX_DISCOUNT_PERCENT);
+      discountAmountVal = Math.round(totalBeforeDiscount * (pct / 100));
     } else {
       discountAmountVal = Number(formData.discount_amount || 0);
     }
     discountAmountVal = Math.min(discountAmountVal, MAX_DISCOUNT_AMOUNT);
 
-    const calculatedGrandTotal = Math.max(0, totalBeforeDiscount - discountAmountVal);
-    const grandTotal = formData.custom_total !== undefined && formData.custom_total !== null && formData.custom_total !== ''
-      ? Number(formData.custom_total)
-      : calculatedGrandTotal;
+    // Tổng đơn thuê không được phép sửa tay -> luôn dùng giá trị tính toán
+    const grandTotal = Math.max(0, totalBeforeDiscount - discountAmountVal);
 
     return Number.isFinite(grandTotal) ? grandTotal : 0;
   };
@@ -1196,15 +1196,14 @@ const RentalModal = ({
             const totalBeforeDiscount = itemsTotal + accessoriesTotal;
             let discountAmountVal = 0;
             if (formData.discount_type === 'percentage') {
-              discountAmountVal = Math.round(totalBeforeDiscount * (Number(formData.discount_amount || 0) / 100));
+              const pct = Math.min(Number(formData.discount_amount || 0), MAX_DISCOUNT_PERCENT);
+              discountAmountVal = Math.round(totalBeforeDiscount * (pct / 100));
             } else {
               discountAmountVal = Number(formData.discount_amount || 0);
             }
             discountAmountVal = Math.min(discountAmountVal, MAX_DISCOUNT_AMOUNT);
-            const calculatedGrandTotal = Math.max(0, totalBeforeDiscount - discountAmountVal);
-            const grandTotal = formData.custom_total !== undefined && formData.custom_total !== null && formData.custom_total !== ''
-              ? Number(formData.custom_total)
-              : calculatedGrandTotal;
+            // Tổng đơn thuê không được phép sửa tay -> luôn dùng giá trị tính toán
+            const grandTotal = Math.max(0, totalBeforeDiscount - discountAmountVal);
 
             return (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
@@ -1312,32 +1311,11 @@ const RentalModal = ({
                           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-3">
                             <div>
                               <p className="text-[9px] sm:text-[10px] font-semibold text-gray-400 uppercase tracking-[0.2em] mb-1">Tổng đơn thuê</p>
-                              <div className={`relative group flex items-center gap-1.5 px-2 py-1 -ml-2 rounded-xl border border-transparent transition-all ${isSaler ? 'cursor-default' : 'hover:border-orange-200 hover:bg-orange-50/50 focus-within:border-orange-200 focus-within:bg-orange-50/50 cursor-text'}`}
-                                onClick={(e) => {
-                                  if (isSaler) return;
-                                  const input = e.currentTarget.querySelector('input');
-                                  if (input) input.focus();
-                                }}
-                              >
-                                <input
-                                  type="text"
-                                  value={formatCurrencyInput(grandTotal)}
-                                  onChange={(e) => {
-                                    if (isSaler) return;
-                                    if (e.target.value === '') {
-                                      setFormData({ ...formData, custom_total: null });
-                                      return;
-                                    }
-                                    const targetTotal = parseCurrencyInput(e.target.value);
-                                    if (isNaN(targetTotal)) return;
-                                    setFormData({ ...formData, custom_total: targetTotal });
-                                  }}
-                                  readOnly={isSaler}
-                                  className="w-[120px] sm:w-[150px] bg-transparent focus:outline-none focus:ring-0 border-none p-0 m-0 text-lg sm:text-2xl font-semibold text-primary tracking-tighter"
-                                  placeholder="0"
-                                />
+                              <div className="flex items-baseline gap-1.5">
+                                <span className="text-lg sm:text-2xl font-semibold text-primary tracking-tighter tabular-nums">
+                                  {formatCurrencyInput(grandTotal) || '0'}
+                                </span>
                                 <span className="text-xs sm:text-sm font-bold text-primary">VND</span>
-                                {!isSaler && <Edit2 size={14} className="text-gray-300 group-hover:text-orange-400 focus-within:text-orange-400 transition-colors ml-0.5" />}
                               </div>
                             </div>
                             <div className="flex sm:block">
@@ -1518,7 +1496,7 @@ const RentalModal = ({
                             type="button"
                             onClick={() => {
                               let newAmount = formData.discount_amount;
-                              if (newAmount > 100) newAmount = 100;
+                              if (newAmount > MAX_DISCOUNT_PERCENT) newAmount = MAX_DISCOUNT_PERCENT;
                               setFormData({ ...formData, discount_type: 'percentage', discount_amount: newAmount, custom_total: null });
                             }}
                             className={`flex-1 py-1 rounded-lg text-[9px] font-semibold uppercase transition-all ${formData.discount_type === 'percentage' ? 'bg-white shadow-sm text-primary' : 'text-gray-400 hover:text-gray-600'}`}
@@ -1528,14 +1506,14 @@ const RentalModal = ({
                         </div>
                       </div>
                       <div>
-                        <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Mức giảm</label>
+                        <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Mức giảm <span className="normal-case tracking-normal text-orange-500">(tối đa {MAX_DISCOUNT_PERCENT}% / {formatPrice(MAX_DISCOUNT_AMOUNT)})</span></label>
                         <div className="relative">
                           <input
                             type="text"
                             value={formatCurrencyInput(formData.discount_amount)}
                             onChange={(e) => {
                               let val = parseCurrencyInput(e.target.value);
-                              if (formData.discount_type === 'percentage' && val > 100) val = 100;
+                              if (formData.discount_type === 'percentage' && val > MAX_DISCOUNT_PERCENT) val = MAX_DISCOUNT_PERCENT;
                               if (formData.discount_type === 'fixed' && val > MAX_DISCOUNT_AMOUNT) val = MAX_DISCOUNT_AMOUNT;
                               setFormData({ ...formData, discount_amount: val, custom_total: null });
                             }}

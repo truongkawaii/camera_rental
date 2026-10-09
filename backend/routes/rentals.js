@@ -17,6 +17,10 @@ const {
 
 const router = express.Router();
 
+// Giới hạn giảm giá khi tạo/sửa đơn thuê
+const MAX_DISCOUNT_PERCENT = 10;
+const MAX_DISCOUNT_AMOUNT = 50000;
+
 const isInvestorOnly = (user) => hasRole(user, 'investor') && !hasRole(user, 'admin', 'camera_manager');
 const isDriverOnly = (user) => hasRole(user, 'driver') && !hasRole(user, 'admin', 'camera_manager', 'investor', 'saler');
 const canAssignRentalCreator = (user) => {
@@ -319,19 +323,19 @@ const resolveAndPriceRentalItems = async (client, {
   let finalTotalPrice = totalSubtotal;
   let totalDiscount = 0;
 
-  if (custom_total !== undefined && custom_total !== null && custom_total !== '') {
-    finalTotalPrice = Math.max(0, Number(custom_total));
-    totalDiscount = Math.max(0, totalSubtotal - finalTotalPrice);
+  // Tổng đơn thuê KHÔNG được sửa tay (custom_total bị bỏ qua).
+  // Giảm giá tối đa: 10% (kiểu %) hoặc 50.000đ, và số tiền giảm không vượt quá 50.000đ.
+  void custom_total;
+  let discountVal = 0;
+  if (discount_type === 'percentage') {
+    const pct = Math.min(Math.max(0, Number(discount_amount || 0)), MAX_DISCOUNT_PERCENT);
+    discountVal = Math.round(totalSubtotal * (pct / 100));
   } else {
-    let discountVal = 0;
-    if (discount_type === 'percentage') {
-      discountVal = Math.round(totalSubtotal * (Number(discount_amount || 0) / 100));
-    } else {
-      discountVal = Number(discount_amount || 0);
-    }
-    totalDiscount = Math.min(totalSubtotal, Math.max(0, discountVal));
-    finalTotalPrice = Math.max(0, totalSubtotal - totalDiscount);
+    discountVal = Number(discount_amount || 0);
   }
+  discountVal = Math.min(Math.max(0, discountVal), MAX_DISCOUNT_AMOUNT);
+  totalDiscount = Math.min(totalSubtotal, discountVal);
+  finalTotalPrice = Math.max(0, totalSubtotal - totalDiscount);
 
   // Proportionally allocate discount across items
   if (items.length > 0) {
