@@ -12,9 +12,9 @@ const PERIOD_OPTIONS = ['sáng', 'chiều', 'tối'];
 const MAX_DISCOUNT_AMOUNT = 50000;
 const MAX_DISCOUNT_PERCENT = 10;
 const PERIOD_TIME_RANGE = {
-  'sáng': { start: '22:30', end: '12:00', startDayOffset: -1 },
+  'sáng': { start: '22:00', end: '12:00', startDayOffset: -1 },
   'chiều': { start: '12:00', end: '18:00', startDayOffset: 0 },
-  'tối': { start: '18:00', end: '22:30', startDayOffset: 0 }
+  'tối': { start: '18:00', end: '22:00', startDayOffset: 0 }
 };
 
 const ROLE_BADGE_STYLES = {

@@ -40,9 +40,9 @@ const DEFAULT_MONTH_DAY_WINDOW_STEP = 5;
 const RENTAL_TOUCH_TOOLTIP_DELAY = 300;
 const TOUCH_MOUSE_GUARD_MS = 1600;
 const PERIOD_TIME_RANGE = {
-  'sáng': { start: '22:30', end: '12:00', startDayOffset: -1 },
+  'sáng': { start: '22:00', end: '12:00', startDayOffset: -1 },
   'chiều': { start: '12:00', end: '18:00', startDayOffset: 0 },
-  'tối': { start: '18:00', end: '22:30', startDayOffset: 0 }
+  'tối': { start: '18:00', end: '22:00', startDayOffset: 0 }
 };
 const EQUIP_TOOLTIP_SELECTOR = '[data-equip-tooltip="true"]';
 
