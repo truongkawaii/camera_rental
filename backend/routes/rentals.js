@@ -324,20 +324,23 @@ const resolveAndPriceRentalItems = async (client, {
   let finalTotalPrice = totalSubtotal;
   let totalDiscount = 0;
 
-  // Chỉ role admin và camera_manager mới được phép sửa custom_total
-  // Giảm giá tối đa: 10% (kiểu %) hoặc 50.000đ, và số tiền giảm không vượt quá 50.000đ.
+  // Chỉ role admin và camera_manager mới được phép sửa custom_total hoặc giảm giá tùy ý
+  // Với các role khác: Giảm giá tối đa 10% (kiểu %) hoặc 50.000đ, và số tiền giảm không vượt quá 50.000đ.
   if (canCustomTotal && custom_total !== undefined && custom_total !== null && custom_total !== '') {
     finalTotalPrice = Math.max(0, Number(custom_total));
     totalDiscount = Math.max(0, totalSubtotal - finalTotalPrice);
   } else {
     let discountVal = 0;
     if (discount_type === 'percentage') {
-      const pct = Math.min(Math.max(0, Number(discount_amount || 0)), MAX_DISCOUNT_PERCENT);
+      const maxPct = canCustomTotal ? 100 : MAX_DISCOUNT_PERCENT;
+      const pct = Math.min(Math.max(0, Number(discount_amount || 0)), maxPct);
       discountVal = Math.round(totalSubtotal * (pct / 100));
     } else {
-      discountVal = Number(discount_amount || 0);
+      discountVal = Math.max(0, Number(discount_amount || 0));
     }
-    discountVal = Math.min(Math.max(0, discountVal), MAX_DISCOUNT_AMOUNT);
+    if (!canCustomTotal) {
+      discountVal = Math.min(discountVal, MAX_DISCOUNT_AMOUNT);
+    }
     totalDiscount = Math.min(totalSubtotal, discountVal);
     finalTotalPrice = Math.max(0, totalSubtotal - totalDiscount);
   }

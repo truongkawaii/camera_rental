@@ -366,12 +366,15 @@ const RentalModal = ({
     const totalBeforeDiscount = itemsTotal + accessoriesTotal;
     let discountAmountVal = 0;
     if (formData.discount_type === 'percentage') {
-      const pct = Math.min(Number(formData.discount_amount || 0), MAX_DISCOUNT_PERCENT);
+      const maxPct = canEditTotal ? 100 : MAX_DISCOUNT_PERCENT;
+      const pct = Math.min(Number(formData.discount_amount || 0), maxPct);
       discountAmountVal = Math.round(totalBeforeDiscount * (pct / 100));
     } else {
       discountAmountVal = Number(formData.discount_amount || 0);
     }
-    discountAmountVal = Math.min(discountAmountVal, MAX_DISCOUNT_AMOUNT);
+    if (!canEditTotal) {
+      discountAmountVal = Math.min(discountAmountVal, MAX_DISCOUNT_AMOUNT);
+    }
 
     // Tổng đơn thuê chỉ cho phép sửa tay đối với Admin và Quản lý Camera
     const calculatedGrandTotal = Math.max(0, totalBeforeDiscount - discountAmountVal);
@@ -1201,12 +1204,15 @@ const RentalModal = ({
             const totalBeforeDiscount = itemsTotal + accessoriesTotal;
             let discountAmountVal = 0;
             if (formData.discount_type === 'percentage') {
-              const pct = Math.min(Number(formData.discount_amount || 0), MAX_DISCOUNT_PERCENT);
+              const maxPct = canEditTotal ? 100 : MAX_DISCOUNT_PERCENT;
+              const pct = Math.min(Number(formData.discount_amount || 0), maxPct);
               discountAmountVal = Math.round(totalBeforeDiscount * (pct / 100));
             } else {
               discountAmountVal = Number(formData.discount_amount || 0);
             }
-            discountAmountVal = Math.min(discountAmountVal, MAX_DISCOUNT_AMOUNT);
+            if (!canEditTotal) {
+              discountAmountVal = Math.min(discountAmountVal, MAX_DISCOUNT_AMOUNT);
+            }
             // Tổng đơn thuê chỉ cho phép sửa tay đối với Admin và Quản lý Camera
             const calculatedGrandTotal = Math.max(0, totalBeforeDiscount - discountAmountVal);
             const grandTotal = canEditTotal && formData.custom_total !== undefined && formData.custom_total !== null && formData.custom_total !== ''
@@ -1532,7 +1538,8 @@ const RentalModal = ({
                             type="button"
                             onClick={() => {
                               let newAmount = formData.discount_amount;
-                              if (newAmount > MAX_DISCOUNT_PERCENT) newAmount = MAX_DISCOUNT_PERCENT;
+                              const maxPct = canEditTotal ? 100 : MAX_DISCOUNT_PERCENT;
+                              if (newAmount > maxPct) newAmount = maxPct;
                               setFormData({ ...formData, discount_type: 'percentage', discount_amount: newAmount, custom_total: null });
                             }}
                             className={`flex-1 py-1 rounded-lg text-[9px] font-semibold uppercase transition-all ${formData.discount_type === 'percentage' ? 'bg-white shadow-sm text-primary' : 'text-gray-400 hover:text-gray-600'}`}
@@ -1542,15 +1549,19 @@ const RentalModal = ({
                         </div>
                       </div>
                       <div>
-                        <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Mức giảm <span className="normal-case tracking-normal text-orange-500">(tối đa {MAX_DISCOUNT_PERCENT}% / {formatPrice(MAX_DISCOUNT_AMOUNT)})</span></label>
+                        <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Mức giảm {!canEditTotal && <span className="normal-case tracking-normal text-orange-500">(tối đa {MAX_DISCOUNT_PERCENT}% / {formatPrice(MAX_DISCOUNT_AMOUNT)})</span>}</label>
                         <div className="relative">
                           <input
                             type="text"
                             value={formatCurrencyInput(formData.discount_amount)}
                             onChange={(e) => {
                               let val = parseCurrencyInput(e.target.value);
-                              if (formData.discount_type === 'percentage' && val > MAX_DISCOUNT_PERCENT) val = MAX_DISCOUNT_PERCENT;
-                              if (formData.discount_type === 'fixed' && val > MAX_DISCOUNT_AMOUNT) val = MAX_DISCOUNT_AMOUNT;
+                              if (!canEditTotal) {
+                                if (formData.discount_type === 'percentage' && val > MAX_DISCOUNT_PERCENT) val = MAX_DISCOUNT_PERCENT;
+                                if (formData.discount_type === 'fixed' && val > MAX_DISCOUNT_AMOUNT) val = MAX_DISCOUNT_AMOUNT;
+                              } else {
+                                if (formData.discount_type === 'percentage' && val > 100) val = 100;
+                              }
                               setFormData({ ...formData, discount_amount: val, custom_total: null });
                             }}
                             className="w-full h-[35px] pl-4 pr-10 py-1 bg-gray-50 border border-gray-100 rounded-xl focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all text-sm font-semibold text-primary"
