@@ -120,6 +120,8 @@ const RentalModal = ({
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState('');
 
+  const canEditTotal = Boolean(isAdmin || isCameraManager);
+
   useEffect(() => {
     if (showModal) {
       document.body.style.overflow = 'hidden';
@@ -371,8 +373,11 @@ const RentalModal = ({
     }
     discountAmountVal = Math.min(discountAmountVal, MAX_DISCOUNT_AMOUNT);
 
-    // Tổng đơn thuê không được phép sửa tay -> luôn dùng giá trị tính toán
-    const grandTotal = Math.max(0, totalBeforeDiscount - discountAmountVal);
+    // Tổng đơn thuê chỉ cho phép sửa tay đối với Admin và Quản lý Camera
+    const calculatedGrandTotal = Math.max(0, totalBeforeDiscount - discountAmountVal);
+    const grandTotal = canEditTotal && formData.custom_total !== undefined && formData.custom_total !== null && formData.custom_total !== ''
+      ? Number(formData.custom_total)
+      : calculatedGrandTotal;
 
     return Number.isFinite(grandTotal) ? grandTotal : 0;
   };
@@ -1202,8 +1207,11 @@ const RentalModal = ({
               discountAmountVal = Number(formData.discount_amount || 0);
             }
             discountAmountVal = Math.min(discountAmountVal, MAX_DISCOUNT_AMOUNT);
-            // Tổng đơn thuê không được phép sửa tay -> luôn dùng giá trị tính toán
-            const grandTotal = Math.max(0, totalBeforeDiscount - discountAmountVal);
+            // Tổng đơn thuê chỉ cho phép sửa tay đối với Admin và Quản lý Camera
+            const calculatedGrandTotal = Math.max(0, totalBeforeDiscount - discountAmountVal);
+            const grandTotal = canEditTotal && formData.custom_total !== undefined && formData.custom_total !== null && formData.custom_total !== ''
+              ? Number(formData.custom_total)
+              : calculatedGrandTotal;
 
             return (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
@@ -1311,12 +1319,40 @@ const RentalModal = ({
                           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-3">
                             <div>
                               <p className="text-[9px] sm:text-[10px] font-semibold text-gray-400 uppercase tracking-[0.2em] mb-1">Tổng đơn thuê</p>
-                              <div className="flex items-baseline gap-1.5">
-                                <span className="text-lg sm:text-2xl font-semibold text-primary tracking-tighter tabular-nums">
-                                  {formatCurrencyInput(grandTotal) || '0'}
-                                </span>
-                                <span className="text-xs sm:text-sm font-bold text-primary">VND</span>
-                              </div>
+                              {canEditTotal ? (
+                                <div
+                                  className="relative group flex items-center gap-1.5 px-2 py-1 -ml-2 rounded-xl border border-transparent hover:border-orange-200 hover:bg-orange-50/50 focus-within:border-orange-200 focus-within:bg-orange-50/50 cursor-text transition-all"
+                                  onClick={(e) => {
+                                    const input = e.currentTarget.querySelector('input');
+                                    if (input) input.focus();
+                                  }}
+                                >
+                                  <input
+                                    type="text"
+                                    value={formatCurrencyInput(grandTotal)}
+                                    onChange={(e) => {
+                                      if (e.target.value === '') {
+                                        setFormData({ ...formData, custom_total: null });
+                                        return;
+                                      }
+                                      const targetTotal = parseCurrencyInput(e.target.value);
+                                      if (isNaN(targetTotal)) return;
+                                      setFormData({ ...formData, custom_total: targetTotal });
+                                    }}
+                                    className="w-[120px] sm:w-[150px] bg-transparent focus:outline-none focus:ring-0 border-none p-0 m-0 text-lg sm:text-2xl font-semibold text-primary tracking-tighter"
+                                    placeholder="0"
+                                  />
+                                  <span className="text-xs sm:text-sm font-bold text-primary">VND</span>
+                                  <Edit2 size={14} className="text-gray-300 group-hover:text-orange-400 focus-within:text-orange-400 transition-colors ml-0.5" />
+                                </div>
+                              ) : (
+                                <div className="flex items-baseline gap-1.5">
+                                  <span className="text-lg sm:text-2xl font-semibold text-primary tracking-tighter tabular-nums">
+                                    {formatCurrencyInput(grandTotal) || '0'}
+                                  </span>
+                                  <span className="text-xs sm:text-sm font-bold text-primary">VND</span>
+                                </div>
+                              )}
                             </div>
                             <div className="flex sm:block">
                               <div className="flex items-center gap-1.5 px-2.5 py-1 bg-orange-50 text-orange-600 rounded-lg border border-orange-100 animate-pulse">

@@ -228,6 +228,7 @@ const resolveAndPriceRentalItems = async (client, {
   discount_amount = 0,
   discount_type = 'fixed',
   custom_total = null,
+  canCustomTotal = false,
   oldItemsMap = {}
 }) => {
   if (!Array.isArray(requestedEquipmentIds) || requestedEquipmentIds.length === 0) {
@@ -323,19 +324,23 @@ const resolveAndPriceRentalItems = async (client, {
   let finalTotalPrice = totalSubtotal;
   let totalDiscount = 0;
 
-  // Tổng đơn thuê KHÔNG được sửa tay (custom_total bị bỏ qua).
+  // Chỉ role admin và camera_manager mới được phép sửa custom_total
   // Giảm giá tối đa: 10% (kiểu %) hoặc 50.000đ, và số tiền giảm không vượt quá 50.000đ.
-  void custom_total;
-  let discountVal = 0;
-  if (discount_type === 'percentage') {
-    const pct = Math.min(Math.max(0, Number(discount_amount || 0)), MAX_DISCOUNT_PERCENT);
-    discountVal = Math.round(totalSubtotal * (pct / 100));
+  if (canCustomTotal && custom_total !== undefined && custom_total !== null && custom_total !== '') {
+    finalTotalPrice = Math.max(0, Number(custom_total));
+    totalDiscount = Math.max(0, totalSubtotal - finalTotalPrice);
   } else {
-    discountVal = Number(discount_amount || 0);
+    let discountVal = 0;
+    if (discount_type === 'percentage') {
+      const pct = Math.min(Math.max(0, Number(discount_amount || 0)), MAX_DISCOUNT_PERCENT);
+      discountVal = Math.round(totalSubtotal * (pct / 100));
+    } else {
+      discountVal = Number(discount_amount || 0);
+    }
+    discountVal = Math.min(Math.max(0, discountVal), MAX_DISCOUNT_AMOUNT);
+    totalDiscount = Math.min(totalSubtotal, discountVal);
+    finalTotalPrice = Math.max(0, totalSubtotal - totalDiscount);
   }
-  discountVal = Math.min(Math.max(0, discountVal), MAX_DISCOUNT_AMOUNT);
-  totalDiscount = Math.min(totalSubtotal, discountVal);
-  finalTotalPrice = Math.max(0, totalSubtotal - totalDiscount);
 
   // Proportionally allocate discount across items
   if (items.length > 0) {
@@ -875,6 +880,7 @@ router.post('/', authenticate, async (req, res) => {
 
     const { fullDays, sessions } = calculateDaysSessions(start_date, start_period, end_date, end_period);
 
+    const canCustomTotal = hasRole(req.user, 'admin', 'camera_manager');
     const pricing = await resolveAndPriceRentalItems(client, {
       requestedEquipmentIds,
       fullDays,
@@ -883,7 +889,8 @@ router.post('/', authenticate, async (req, res) => {
       currentUserId: req.user.id,
       discount_amount,
       discount_type,
-      custom_total
+      custom_total,
+      canCustomTotal
     });
 
     const primaryEquipment = pricing.primaryItem;
@@ -1091,6 +1098,7 @@ router.put('/:id', authenticate, async (req, res) => {
     const finalDiscountAmount = discount_amount !== undefined ? discount_amount : old.discount_amount;
     const finalDiscountType = discount_type || old.discount_type || 'fixed';
 
+    const canCustomTotal = hasRole(req.user, 'admin', 'camera_manager');
     const pricing = await resolveAndPriceRentalItems(client, {
       requestedEquipmentIds,
       fullDays,
@@ -1099,7 +1107,8 @@ router.put('/:id', authenticate, async (req, res) => {
       currentUserId: req.user.id,
       discount_amount: finalDiscountAmount,
       discount_type: finalDiscountType,
-      custom_total: custom_total !== undefined ? custom_total : (old.custom_total ?? null),
+      custom_total,
+      canCustomTotal,
       oldItemsMap
     });
 
