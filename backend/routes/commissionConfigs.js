@@ -2,7 +2,8 @@ const express = require('express');
 const { pool } = require('../utils/db');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { logActivity } = require('../utils/logger');
-const { recalculateRecentMonthCommissions } = require('../services/commissionService');
+const { recalculateRecentMonthCommissions, recalculateSalerMonthTier } = require('../services/commissionService');
+const { getVNMonth, isTierMonth, isMonthLocked, getMonthSalerSummaries } = require('../services/salesTierService');
 
 const router = express.Router();
 
@@ -10,6 +11,33 @@ const normalizeRate = (value) => {
   const num = Number(value);
   if (!Number.isFinite(num) || num < 0 || num > 100) return null;
   return num;
+};
+
+// Chính sách thi đua (từ 2026-10): nhân viên sale nằm ở bộ quy tắc ứng với % hoa hồng THỰC TẾ của tháng hiện tại
+// (tự động theo doanh số, hoặc % admin chỉnh tay cho tháng đó).
+const getSalerEffectiveRates = async () => {
+  const month = getVNMonth(new Date());
+  if (!isTierMonth(month)) return { month, summaries: [] };
+  const map = await getMonthSalerSummaries(pool, month);
+  return { month, summaries: [...map.values()] };
+};
+
+// Đảm bảo có sẵn bộ quy tắc saler cho mọi mức % đang áp dụng (ví dụ 5%).
+const ensureSalerRuleSetsForRates = async (rates, actedBy) => {
+  const distinct = [...new Set(rates.map((r) => Number(r)))];
+  if (distinct.length === 0) return;
+  const existing = await pool.query(
+    `SELECT rate_percent FROM commission_rule_sets WHERE rule_type = 'saler' AND is_deleted = false`
+  );
+  const have = new Set(existing.rows.map((r) => Number(r.rate_percent)));
+  for (const rate of distinct) {
+    if (have.has(rate)) continue;
+    await pool.query(
+      `INSERT INTO commission_rule_sets (name, rule_type, rate_percent, is_active, inserted_by, updated_by)
+       VALUES ($1, 'saler', $2, true, $3, $3)`,
+      [`Hoa Hồng Saler - ${rate}%`, rate, actedBy]
+    );
+  }
 };
 
 // ─── GET all rule sets (with assigned_user_count) ────────────────────────────
@@ -22,6 +50,11 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
     if (ruleType && ['saler', 'driver'].includes(ruleType)) {
       whereClause += ` AND rs.rule_type = $1`;
       params.push(ruleType);
+    }
+
+    const { summaries } = await getSalerEffectiveRates();
+    if (ruleType !== 'driver' && summaries.length > 0) {
+      await ensureSalerRuleSetsForRates(summaries.map((s) => s.rate_percent), req.user.id);
     }
 
     const result = await pool.query(
@@ -38,6 +71,16 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
       `,
       params
     );
+
+    if (summaries.length > 0) {
+      for (const row of result.rows) {
+        if (row.rule_type === 'saler') {
+          row.assigned_user_count = String(
+            summaries.filter((s) => Number(s.rate_percent) === Number(row.rate_percent)).length
+          );
+        }
+      }
+    }
 
     return res.json(result.rows);
   } catch (error) {
@@ -98,6 +141,30 @@ router.get('/all-users', authenticate, requireAdmin, async (req, res) => {
       WHERE rsu.is_deleted = false
       ORDER BY rsu.user_id, rs.rule_type
     `);
+    const { summaries } = await getSalerEffectiveRates();
+    if (summaries.length > 0) {
+      const byRate = new Map();
+      const ruleSets = await pool.query(
+        `SELECT id, name, rate_percent, is_active FROM commission_rule_sets WHERE rule_type = 'saler' AND is_deleted = false ORDER BY id`
+      );
+      for (const rs of ruleSets.rows) if (!byRate.has(Number(rs.rate_percent))) byRate.set(Number(rs.rate_percent), rs);
+      const salerIds = new Set(summaries.map((s) => s.user_id));
+      const rows = result.rows.filter((r) => !(r.rule_type === 'saler' && salerIds.has(r.user_id)));
+      for (const s of summaries) {
+        const rs = byRate.get(Number(s.rate_percent));
+        if (!rs) continue;
+        rows.push({
+          user_id: s.user_id,
+          rule_set_id: rs.id,
+          assigned_role: 'saler',
+          rule_set_name: rs.name,
+          rule_type: 'saler',
+          rate_percent: rs.rate_percent,
+          is_active: rs.is_active,
+        });
+      }
+      return res.json(rows);
+    }
     return res.json(result.rows);
   } catch (error) {
     console.error('Get all rule set users error:', error);
@@ -135,6 +202,23 @@ router.get('/:id/users', authenticate, requireAdmin, async (req, res) => {
 
     query += ` ORDER BY rsu.role_name ASC, u.full_name ASC`;
 
+    const rsInfo = await pool.query(
+      `SELECT rule_type, rate_percent FROM commission_rule_sets WHERE id = $1 AND is_deleted = false LIMIT 1`,
+      [id]
+    );
+    if (rsInfo.rows[0]?.rule_type === 'saler' && (!roleName || roleName === 'saler')) {
+      const { summaries } = await getSalerEffectiveRates();
+      if (summaries.length > 0) {
+        const rate = Number(rsInfo.rows[0].rate_percent);
+        return res.json(
+          summaries
+            .filter((s) => Number(s.rate_percent) === rate)
+            .map((s) => ({ id: s.user_id, username: s.username, full_name: s.full_name, user_role_name: 'saler', assigned_role: 'saler' }))
+            .sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || ''), 'vi'))
+        );
+      }
+    }
+
     const result = await pool.query(query, params);
 
     return res.json(result.rows);
@@ -167,7 +251,7 @@ router.post('/:id/users', authenticate, requireAdmin, async (req, res) => {
 
     // Verify rule set exists
     const rsCheck = await client.query(
-      'SELECT id, name, rule_type FROM commission_rule_sets WHERE id = $1 AND is_deleted = false LIMIT 1',
+      'SELECT id, name, rule_type, rate_percent FROM commission_rule_sets WHERE id = $1 AND is_deleted = false LIMIT 1',
       [id]
     );
     if (rsCheck.rows.length === 0) {
@@ -187,6 +271,27 @@ router.post('/:id/users', authenticate, requireAdmin, async (req, res) => {
     if (userCheck.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Sale (chính sách thi đua): gán vào bộ quy tắc = đặt % hoa hồng RIÊNG cho THÁNG HIỆN TẠI.
+    // Sang tháng mới hệ thống tự tính lại theo doanh số.
+    const tierMonth = getVNMonth(new Date());
+    if (roleName === 'saler' && isTierMonth(tierMonth)) {
+      if (await isMonthLocked(client, tierMonth)) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: `Lương tháng ${tierMonth} đã chốt, không thể đổi % hoa hồng.` });
+      }
+      await client.query(
+        `INSERT INTO sale_monthly_commission_overrides (user_id, month, rate_percent, inserted_by, updated_by)
+         VALUES ($1, $2, $3, $4, $4)
+         ON CONFLICT (user_id, month) DO UPDATE
+           SET rate_percent = EXCLUDED.rate_percent, is_deleted = false, updated_at = NOW(), updated_by = EXCLUDED.updated_by`,
+        [userId, tierMonth, Number(rsCheck.rows[0].rate_percent), req.user.id]
+      );
+      const tierRecalc = await recalculateSalerMonthTier(client, userId, tierMonth, req.user.id);
+      await client.query('COMMIT');
+      await logActivity('UPDATE', 'commission_config', id, `Đặt hoa hồng tháng ${tierMonth} của "${userCheck.rows[0].username}" = ${Number(rsCheck.rows[0].rate_percent)}% (bộ quy tắc "${rsCheck.rows[0].name}")`, req.user.id);
+      return res.status(201).json({ message: 'User rate set for current month', recalculated_rentals: tierRecalc.recalculated });
     }
 
     // Check if user is already assigned to a DIFFERENT rule set for this role
@@ -260,6 +365,29 @@ router.delete('/:id/users/:userId', authenticate, requireAdmin, async (req, res)
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    // Sale (chính sách thi đua): gỡ khỏi bộ quy tắc = xoá % chỉnh tay của tháng hiện tại, quay về tính tự động.
+    const delMonth = getVNMonth(new Date());
+    const delRs = await client.query('SELECT rule_type FROM commission_rule_sets WHERE id = $1 LIMIT 1', [id]);
+    if (delRs.rows[0]?.rule_type === 'saler' && (!roleName || roleName === 'saler') && isTierMonth(delMonth)) {
+      if (await isMonthLocked(client, delMonth)) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: `Lương tháng ${delMonth} đã chốt, không thể đổi % hoa hồng.` });
+      }
+      await client.query(
+        `UPDATE sale_monthly_commission_overrides
+         SET rate_percent = NULL,
+             is_deleted = (bonus_amount IS NULL),
+             updated_at = NOW(), updated_by = $3
+         WHERE user_id = $1 AND month = $2 AND is_deleted = false`,
+        [userId, delMonth, req.user.id]
+      );
+      const tierRecalc = await recalculateSalerMonthTier(client, userId, delMonth, req.user.id);
+      await client.query('COMMIT');
+      await logActivity('UPDATE', 'commission_config', id, `Bỏ % hoa hồng chỉnh tay tháng ${delMonth} của user #${userId} (quay về tự động)`, req.user.id);
+      return res.json({ message: 'Month override cleared', recalculated_rentals: tierRecalc.recalculated, recalculation_skipped_locked: false, recalculation_skipped_locked_months: [] });
+    }
+
     let query = `
         UPDATE commission_rule_set_users
         SET is_deleted = true, updated_at = NOW(), updated_by = $3

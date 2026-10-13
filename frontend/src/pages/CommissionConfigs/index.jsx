@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import SaleTierTable from '../../components/SaleTierNotice';
 import { Percent, Plus, CheckCircle2, Calendar, Save, RefreshCw, SlidersHorizontal, Users, X, UserPlus, ChevronDown, ChevronUp, AlertCircle, Trash2, Pencil } from 'lucide-react';
 import {
   activateCommissionConfig,
@@ -981,7 +980,7 @@ const CommissionConfigs = () => {
                                       ? 'bg-blue-50 border-blue-100 text-blue-700'
                                       : 'bg-purple-50 border-purple-100 text-purple-700'
                                   }`}>
-                                    {isSaler ? 'Tự động theo doanh số tháng (5% – 15% + thưởng)' : `${rateLabel} ${rateValue}%`}
+                                    {rateLabel} {rateValue}%
                                   </span>
                                 </div>
                               )}
@@ -1113,8 +1112,6 @@ const CommissionConfigs = () => {
                         )}
 
                         {/* Rates row - view mode only (shown when NOT editing) */}
-                        {isSaler && editingItemId !== item.id && <SaleTierTable />}
-
                         {!isSaler && editingItemId !== item.id && (
                           <div className="mt-4 grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3">
                             <div>
