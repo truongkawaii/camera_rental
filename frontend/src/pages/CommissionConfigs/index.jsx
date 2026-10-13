@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import SaleTierNotice from '../../components/SaleTierNotice';
 import { Percent, Plus, CheckCircle2, Calendar, Save, RefreshCw, SlidersHorizontal, Users, X, UserPlus, ChevronDown, ChevronUp, AlertCircle, Trash2, Pencil } from 'lucide-react';
 import {
   activateCommissionConfig,
@@ -743,6 +744,8 @@ const CommissionConfigs = () => {
             Tải lại
           </button>
         </div>
+
+        <SaleTierNotice />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* ── Create form ── */}
