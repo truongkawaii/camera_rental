@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import SaleTierNotice from '../../components/SaleTierNotice';
+import SaleTierTable from '../../components/SaleTierNotice';
 import { Percent, Plus, CheckCircle2, Calendar, Save, RefreshCw, SlidersHorizontal, Users, X, UserPlus, ChevronDown, ChevronUp, AlertCircle, Trash2, Pencil } from 'lucide-react';
 import {
   activateCommissionConfig,
@@ -745,8 +745,6 @@ const CommissionConfigs = () => {
           </button>
         </div>
 
-        <SaleTierNotice />
-
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* ── Create form ── */}
           <div className="lg:col-span-1 bg-white border border-gray-100 rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow">
@@ -983,7 +981,7 @@ const CommissionConfigs = () => {
                                       ? 'bg-blue-50 border-blue-100 text-blue-700'
                                       : 'bg-purple-50 border-purple-100 text-purple-700'
                                   }`}>
-                                    {rateLabel} {rateValue}%
+                                    {isSaler ? 'Tự động theo doanh số tháng (5% – 15% + thưởng)' : `${rateLabel} ${rateValue}%`}
                                   </span>
                                 </div>
                               )}
@@ -1069,7 +1067,8 @@ const CommissionConfigs = () => {
                               </div>
                             </div>
 
-                            {/* Edit rate */}
+                            {/* Edit rate (driver only - sales dùng chính sách thi đua tự động) */}
+                            {!isSaler && (
                             <div>
                               <label className="block text-[11px] font-semibold text-gray-500 mb-1">{rateLabel} (%)</label>
                               <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3">
@@ -1078,12 +1077,12 @@ const CommissionConfigs = () => {
                                   min="0"
                                   max="100"
                                   step="0.1"
-                                  value={isSaler ? editing.saler : editing.driver}
+                                  value={editing.driver}
                                   onChange={(event) => setEditingRates((prev) => ({
                                     ...prev,
                                     [item.id]: {
                                       ...prev[item.id],
-                                      [isSaler ? 'saler' : 'driver']: event.target.value
+                                      driver: event.target.value
                                     }
                                   }))}
                                   className="w-full h-[35px] px-3 rounded-xl border border-gray-200 bg-white focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
@@ -1091,6 +1090,7 @@ const CommissionConfigs = () => {
                                 <div />
                               </div>
                             </div>
+                            )}
 
                             <div className="flex items-center gap-2 justify-end flex-wrap pt-1">
                               <button
@@ -1113,7 +1113,9 @@ const CommissionConfigs = () => {
                         )}
 
                         {/* Rates row - view mode only (shown when NOT editing) */}
-                        {editingItemId !== item.id && (
+                        {isSaler && editingItemId !== item.id && <SaleTierTable />}
+
+                        {!isSaler && editingItemId !== item.id && (
                           <div className="mt-4 grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3">
                             <div>
                               <label className="block text-[11px] font-semibold text-gray-500 mb-1">{rateLabel} (%)</label>
