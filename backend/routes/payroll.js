@@ -247,7 +247,7 @@ async function calcRealtimePayroll(startStr, endStr) {
       managed_orders_count: parseInt(user.managed_orders_count, 10) || 0,
       created_orders_count: parseInt(user.created_orders_count, 10) || 0,
       commission_amount,
-      total_payable: Number(user.base_salary) + commission_amount,
+      total_payable: Number(user.base_salary) + commission_amount + (tier ? Number(tier.bonus_amount || 0) : 0),
       saler_commission_amount: Number(user.saler_commission_amount || 0),
       driver_commission_amount: Number(user.driver_commission_amount || 0),
       paid_to_upline: Number(user.paid_to_upline || 0),

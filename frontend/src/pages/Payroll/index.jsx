@@ -746,7 +746,8 @@ const Payroll = () => {
     handleDeleteTransfer(transferId);
   };
 
-  const totalPayrollCost = payrollData.reduce((s, i) => s + Number(i.total_payable), 0);
+  // Thưởng doanh số đã nằm trong chi phí phát sinh (misc) nên không cộng lại ở đây
+  const totalPayrollCost = payrollData.reduce((s, i) => s + Number(i.total_payable) - Number(i.bonus_amount || 0), 0);
   const totalCommission = payrollData.reduce((s, i) => s + Number(i.commission_amount), 0);
   const totalAdsCost = adsCosts.reduce((s, i) => s + Number(i.amount), 0);
   const totalMiscCost = miscCosts.reduce((s, i) => s + Number(i.amount), 0);
@@ -1351,9 +1352,15 @@ const Payroll = () => {
                                   <p className="text-sm font-bold text-amber-600 mt-0.5">+{fmtVND(item.received_from_downline)}</p>
                                 </div>
                               )}
+                              {Number(item.bonus_amount) > 0 && (
+                                <div className="bg-white rounded-xl p-3 border border-rose-100">
+                                  <p className="text-[10px] text-gray-400 font-semibold uppercase">Thưởng doanh số</p>
+                                  <p className="text-sm font-bold text-rose-500 mt-0.5">+{fmtVND(item.bonus_amount)}</p>
+                                </div>
+                              )}
                               <div className="bg-purple-100 rounded-xl p-3 border border-purple-200">
                                 <p className="text-[10px] text-gray-500 font-semibold uppercase">Tổng thực nhận</p>
-                                <p className="text-sm font-black text-purple-700 mt-0.5">{fmtVND(item.commission_amount)}</p>
+                                <p className="text-sm font-black text-purple-700 mt-0.5">{fmtVND(Number(item.commission_amount || 0) + Number(item.bonus_amount || 0))}</p>
                               </div>
                               {/* Chuyển tiền — gộp chung vào grid 4 cột */}
                               {(() => {
