@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getMiscCosts, createMiscCost, updateMiscCost, deleteMiscCost, getBranches } from '../../api/client';
+import { getMiscCosts, createMiscCost, updateMiscCost, deleteMiscCost, getBranches, updateSaleMonthOverride } from '../../api/client';
 import { Receipt, Calendar, Plus, Edit, Trash2, X, Building2 } from 'lucide-react';
 import { useToast, ToastContainer } from '../../components/Toast';
 import ModernMonthPicker from '../../components/ModernMonthPicker';
@@ -27,6 +27,7 @@ const MiscCosts = () => {
   const [editingMisc, setEditingMisc] = useState(null);
   const [miscForm, setMiscForm] = useState({ date: '', start_date: '', end_date: '', amount: '', category: '', branch_id: '', notes: '' });
   const [branches, setBranches] = useState([]);
+  const [bonusEdit, setBonusEdit] = useState(null); // { item, amount, branch_id }
 
   const [confirmModal, setConfirmModal] = useState({
     show: false, title: '', message: '', type: 'warning', onConfirm: () => {},
@@ -101,6 +102,33 @@ const MiscCosts = () => {
         toast.success('Đã thêm chi phí Phát sinh');
       }
       setShowMiscModal(false);
+      loadData();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Lỗi khi lưu');
+    }
+  };
+
+  const openBonusModal = (item) => {
+    setBonusEdit({ item, amount: item.amount || '', branch_id: item.branch_id || '' });
+  };
+
+  const handleSaveBonus = async (e, reset = false) => {
+    if (e) e.preventDefault();
+    const { item, amount, branch_id } = bonusEdit;
+    if (!reset) {
+      if (amount === '' || Number(amount) < 0) { toast.error('Vui lòng nhập số tiền thưởng'); return; }
+      if (!branch_id) { toast.error('Vui lòng chọn cơ sở'); return; }
+    }
+    try {
+      await updateSaleMonthOverride({
+        user_id: item.user_id,
+        month: item.month,
+        rate_percent: item.override_rate_percent ?? null,
+        bonus_amount: reset ? null : Number(amount),
+        branch_id: reset || Number(branch_id) === Number(item.user_branch_id) ? null : Number(branch_id),
+      });
+      toast.success(reset ? 'Đã khôi phục thưởng tự động' : 'Đã cập nhật khoản thưởng');
+      setBonusEdit(null);
       loadData();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Lỗi khi lưu');
@@ -191,7 +219,9 @@ const MiscCosts = () => {
                         <td className="px-6 py-4">
                            <div className="flex justify-end gap-2">
                              {item.is_auto ? (
-                               <span className="text-[11px] text-gray-400 italic whitespace-nowrap">Hệ thống tính</span>
+                              <button onClick={() => openBonusModal(item)} title={item.is_locked ? 'Tháng đã chốt lương' : 'Sửa thưởng'} disabled={item.is_locked} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-white rounded-lg border border-transparent hover:border-gray-200 disabled:opacity-40 disabled:cursor-not-allowed">
+                                <Edit size={16} />
+                              </button>
                              ) : (<>
                              <button onClick={() => openMiscModal(item)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-white rounded-lg border border-transparent hover:border-gray-200">
                                <Edit size={16} />
@@ -247,6 +277,32 @@ const MiscCosts = () => {
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowMiscModal(false)} className="flex-1 py-3 bg-gray-100 rounded-xl font-semibold">Hủy</button>
+                <button type="submit" className="flex-1 py-3 bg-amber-600 text-white rounded-xl font-semibold hover:opacity-90">Lưu</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {bonusEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-3xl shadow-xl w-full max-w-md overflow-hidden">
+            <div className="p-6 border-b flex justify-between items-center">
+              <h3 className="text-xl font-bold">Sửa thưởng doanh số</h3>
+              <button onClick={() => setBonusEdit(null)}><X size={24} className="text-gray-400 hover:text-gray-600" /></button>
+            </div>
+            <form onSubmit={handleSaveBonus} className="p-6 space-y-4">
+              <p className="text-sm text-gray-500">{bonusEdit.item.notes}</p>
+              <div>
+                <label className="block text-sm font-medium mb-1">Cơ sở</label>
+                <CustomSelect options={branches} value={bonusEdit.branch_id} onChange={v => setBonusEdit({ ...bonusEdit, branch_id: v })} placeholder="Chọn cơ sở" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Số tiền thưởng</label>
+                <input required type="text" value={formatCurrencyInput(bonusEdit.amount)} onChange={e => setBonusEdit({ ...bonusEdit, amount: parseCurrencyInput(e.target.value) })} className="w-full p-2 border rounded-xl bg-gray-50" />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => handleSaveBonus(null, true)} className="flex-1 py-3 bg-gray-100 rounded-xl font-semibold text-sm">Về tự động</button>
                 <button type="submit" className="flex-1 py-3 bg-amber-600 text-white rounded-xl font-semibold hover:opacity-90">Lưu</button>
               </div>
             </form>

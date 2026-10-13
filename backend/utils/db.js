@@ -770,6 +770,7 @@ const initDB = async () => {
       CREATE UNIQUE INDEX IF NOT EXISTS idx_sale_monthly_overrides_user_month
       ON sale_monthly_commission_overrides(user_id, month)
     `);
+    await pool.query(`ALTER TABLE sale_monthly_commission_overrides ADD COLUMN IF NOT EXISTS branch_id INTEGER REFERENCES branches(id)`);
 
     await pool.query(`ALTER TABLE entity_images ADD COLUMN IF NOT EXISTS secure_url TEXT`);
     await pool.query(`ALTER TABLE entity_images ADD COLUMN IF NOT EXISTS public_id VARCHAR(255)`);

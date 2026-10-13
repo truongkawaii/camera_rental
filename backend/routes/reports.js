@@ -3,6 +3,7 @@ const express = require('express');
 const { pool } = require('../utils/db');
 const { authenticate, requireAdmin, requireAdminOrManager, hasRole } = require('../middleware/auth');
 const { getRevenueByBranch } = require('../services/revenueByBranchService');
+const { getBonusMiscRows } = require('../services/salesTierService');
 
 const router = express.Router();
 
@@ -381,6 +382,24 @@ router.get('/investor-revenue', authenticate, async (req, res) => {
       ORDER BY CASE WHEN COALESCE(r.investor_id, m.investor_id, ads.investor_id, misc.investor_id, 0) = 0 THEN 1 ELSE 0 END, total_revenue DESC, investor_name ASC
     `, [periodStartISO, periodEndISO, employeePeriodStartDate, employeePeriodEndDate, hasRole(req.user, 'admin'), req.user.id]);
 
+    // Thưởng doanh số của sale (chi phí phát sinh tự động) tính theo cơ sở mà nhà đầu tư sở hữu thiết bị
+    const bonusRows = await getBonusMiscRows(pool, employeePeriodStartDate, employeePeriodEndDate);
+    const bonusByInvestor = new Map();
+    if (bonusRows.length > 0) {
+      const ownerBranches = await pool.query(
+        `SELECT DISTINCT e.owner_id, e.branch_id
+         FROM equipment e
+         WHERE e.is_deleted = false AND e.branch_id IS NOT NULL AND e.owner_id IS NOT NULL`
+      );
+      const bonusByBranch = new Map();
+      for (const b of bonusRows) {
+        bonusByBranch.set(b.branch_id, (bonusByBranch.get(b.branch_id) || 0) + Number(b.amount));
+      }
+      for (const ob of ownerBranches.rows) {
+        bonusByInvestor.set(ob.owner_id, (bonusByInvestor.get(ob.owner_id) || 0) + (bonusByBranch.get(ob.branch_id) || 0));
+      }
+    }
+
     // Process rows into the same format frontend expects
     const rows = result.rows.map(row => {
       const total_revenue = parseFloat(row.total_revenue || 0);
@@ -388,7 +407,8 @@ router.get('/investor-revenue', authenticate, async (req, res) => {
       const driver_commission_amount = parseFloat(row.driver_commission_amount || 0);
       const maintenance_cost = parseFloat(row.maintenance_cost || 0);
       const ads_cost = parseFloat(row.ads_cost || 0);
-      const misc_cost = parseFloat(row.misc_cost || 0);
+      const bonus_cost = bonusByInvestor.get(row.investor_id) || 0;
+      const misc_cost = parseFloat(row.misc_cost || 0) + bonus_cost;
       const net_amount = total_revenue - maintenance_cost - commission_amount - driver_commission_amount - ads_cost - misc_cost;
 
       return {

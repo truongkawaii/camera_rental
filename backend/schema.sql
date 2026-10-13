@@ -367,6 +367,7 @@ CREATE TABLE IF NOT EXISTS sale_monthly_commission_overrides (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sale_monthly_overrides_user_month
   ON sale_monthly_commission_overrides(user_id, month);
+ALTER TABLE sale_monthly_commission_overrides ADD COLUMN IF NOT EXISTS branch_id INTEGER REFERENCES branches(id);
 
 -- Ads costs table
 CREATE TABLE IF NOT EXISTS ads_costs (

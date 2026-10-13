@@ -377,7 +377,7 @@ router.delete('/:id/users/:userId', authenticate, requireAdmin, async (req, res)
       await client.query(
         `UPDATE sale_monthly_commission_overrides
          SET rate_percent = NULL,
-             is_deleted = (bonus_amount IS NULL),
+             is_deleted = (bonus_amount IS NULL AND branch_id IS NULL),
              updated_at = NOW(), updated_by = $3
          WHERE user_id = $1 AND month = $2 AND is_deleted = false`,
         [userId, delMonth, req.user.id]

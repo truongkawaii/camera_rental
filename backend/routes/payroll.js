@@ -37,6 +37,7 @@ const {
   isValidMonth,
   isMonthLocked,
   isTieredSaler,
+  getMonthOverride,
   getMonthSalerSummaries
 } = require('../services/salesTierService');
 const { recalculateSalerMonthTier } = require('../services/commissionService');
@@ -540,6 +541,9 @@ router.put('/sale-override', authenticate, requireAdmin, async (req, res) => {
     const parseNullable = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
     const rate = parseNullable(req.body.rate_percent);
     const bonus = parseNullable(req.body.bonus_amount);
+    // branch_id: undefined = giữ nguyên cơ sở đã chọn trước đó, null/'' = về cơ sở của nhân viên
+    const branchProvided = Object.prototype.hasOwnProperty.call(req.body, 'branch_id');
+    let branchId = branchProvided ? parseNullable(req.body.branch_id) : undefined;
 
     if (!isValidMonth(month) || !isTierMonth(month)) {
       return res.status(400).json({ error: `Chỉ áp dụng cho tháng từ ${TIER_START_MONTH}` });
@@ -556,7 +560,18 @@ router.put('/sale-override', authenticate, requireAdmin, async (req, res) => {
     }
 
     await client.query('BEGIN');
-    if (rate === null && bonus === null) {
+    if (branchId === undefined) {
+      const existing = await getMonthOverride(client, Number(user_id), month);
+      branchId = existing ? existing.branch_id : null;
+    }
+    if (branchId !== null) {
+      const branchCheck = await client.query('SELECT id FROM branches WHERE id = $1 AND is_deleted = false', [branchId]);
+      if (branchCheck.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Cơ sở không hợp lệ' });
+      }
+    }
+    if (rate === null && bonus === null && branchId === null) {
       await client.query(
         `UPDATE sale_monthly_commission_overrides SET is_deleted = true, updated_at = NOW(), updated_by = $3
          WHERE user_id = $1 AND month = $2`,
@@ -564,16 +579,17 @@ router.put('/sale-override', authenticate, requireAdmin, async (req, res) => {
       );
     } else {
       await client.query(
-        `INSERT INTO sale_monthly_commission_overrides (user_id, month, rate_percent, bonus_amount, notes, inserted_by, updated_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $6)
+        `INSERT INTO sale_monthly_commission_overrides (user_id, month, rate_percent, bonus_amount, branch_id, notes, inserted_by, updated_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
          ON CONFLICT (user_id, month) DO UPDATE
            SET rate_percent = EXCLUDED.rate_percent,
                bonus_amount = EXCLUDED.bonus_amount,
+               branch_id = EXCLUDED.branch_id,
                notes = EXCLUDED.notes,
                is_deleted = false,
                updated_at = NOW(),
                updated_by = EXCLUDED.updated_by`,
-        [user_id, month, rate, bonus, notes || null, req.user.id]
+        [user_id, month, rate, bonus, branchId, notes || null, req.user.id]
       );
     }
     const recalculated = await recalculateSalerMonthTier(client, Number(user_id), month, req.user.id);

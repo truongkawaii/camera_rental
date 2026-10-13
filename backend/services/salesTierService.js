@@ -211,9 +211,10 @@ const getMonthSalerSummaries = async (client, month) => {
 
   const overrideResult = await client.query(
     `
-      SELECT user_id, rate_percent, bonus_amount
-      FROM sale_monthly_commission_overrides
-      WHERE month = $1 AND is_deleted = false
+      SELECT o.user_id, o.rate_percent, o.bonus_amount, o.branch_id, ob.name AS branch_name
+      FROM sale_monthly_commission_overrides o
+      LEFT JOIN branches ob ON ob.id = o.branch_id AND ob.is_deleted = false
+      WHERE o.month = $1 AND o.is_deleted = false
     `,
     [month]
   );
@@ -247,13 +248,17 @@ const getMonthSalerSummaries = async (client, month) => {
       resolution.rate_percent = Math.round(toNumber(snapshot.commission_rate) * 10000) / 100;
     }
 
+    const branchOverride = overrideByUser.get(user.id);
+    const hasBranchOverride = !!(branchOverride && branchOverride.branch_id && branchOverride.branch_name);
     summaries.set(user.id, {
       ...resolution,
       user_id: user.id,
       username: user.username,
       full_name: user.full_name,
-      branch_id: user.branch_id,
-      branch_name: user.branch_name,
+      branch_id: hasBranchOverride ? branchOverride.branch_id : user.branch_id,
+      branch_name: hasBranchOverride ? branchOverride.branch_name : user.branch_name,
+      user_branch_id: user.branch_id,
+      override_branch_id: hasBranchOverride ? branchOverride.branch_id : null,
       is_locked: locked
     });
   }
@@ -261,7 +266,49 @@ const getMonthSalerSummaries = async (client, month) => {
   return summaries;
 };
 
+/**
+ * Các dòng "Thưởng doanh số" tự động (coi như chi phí phát sinh) cho khoảng ngày [start, end].
+ * Dùng chung cho trang Chi phí phát sinh, báo cáo nhà đầu tư...
+ */
+const getBonusMiscRows = async (client, start, end) => {
+  const rows = [];
+  const startMonth = String(start).slice(0, 7);
+  const endMonth = String(end).slice(0, 7);
+  let [cy, cm] = (startMonth < TIER_START_MONTH ? TIER_START_MONTH : startMonth).split('-').map(Number);
+  while (`${cy}-${String(cm).padStart(2, '0')}` <= endMonth) {
+    const monthKey = `${cy}-${String(cm).padStart(2, '0')}`;
+    const bounds = getMonthDateBounds(monthKey);
+    const summaries = await getMonthSalerSummaries(client, monthKey);
+    for (const s of summaries.values()) {
+      if (!(Number(s.bonus_amount) > 0)) continue;
+      rows.push({
+        id: `auto-bonus-${s.user_id}-${monthKey}`,
+        user_id: s.user_id,
+        month: monthKey,
+        date: bounds.startDate,
+        start_date: bounds.startDate,
+        end_date: bounds.endDate,
+        branch_id: s.branch_id,
+        branch_name: s.branch_name,
+        amount: Number(s.bonus_amount),
+        category: 'Thưởng doanh số',
+        notes: `Thưởng doanh số tháng ${monthKey} - ${s.full_name || s.username} (${s.tier_label})`,
+        created_by_name: 'Hệ thống',
+        is_auto: true,
+        is_locked: s.is_locked,
+        override_rate_percent: s.override_rate_percent,
+        override_bonus_amount: s.override_bonus_amount,
+        user_branch_id: s.user_branch_id
+      });
+    }
+    cm += 1;
+    if (cm > 12) { cm = 1; cy += 1; }
+  }
+  return rows;
+};
+
 module.exports = {
+  getBonusMiscRows,
   TIER_START_MONTH,
   SALE_TIERS,
   isValidMonth,

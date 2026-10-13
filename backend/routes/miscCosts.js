@@ -11,7 +11,7 @@ const express = require('express');
 const { pool } = require('../utils/db');
 const { logActivity } = require('../utils/logger');
 const { authenticate, requireAdmin, hasRole } = require('../middleware/auth');
-const { TIER_START_MONTH, getMonthDateBounds, getMonthSalerSummaries } = require('../services/salesTierService');
+const { getBonusMiscRows } = require('../services/salesTierService');
 
 const router = express.Router();
 
@@ -118,33 +118,7 @@ router.get('/', authenticate, async (req, res) => {
     );
 
     // Thưởng doanh số của sale (chính sách thi đua, từ 2026-10) tự động tính vào chi phí phát sinh
-    const autoRows = [];
-    const startMonth = String(start).slice(0, 7);
-    const endMonth = String(end).slice(0, 7);
-    let [cy, cm] = (startMonth < TIER_START_MONTH ? TIER_START_MONTH : startMonth).split('-').map(Number);
-    while (`${cy}-${String(cm).padStart(2, '0')}` <= endMonth) {
-      const monthKey = `${cy}-${String(cm).padStart(2, '0')}`;
-      const bounds = getMonthDateBounds(monthKey);
-      const summaries = await getMonthSalerSummaries(pool, monthKey);
-      for (const s of summaries.values()) {
-        if (!(Number(s.bonus_amount) > 0)) continue;
-        autoRows.push({
-          id: `auto-bonus-${s.user_id}-${monthKey}`,
-          date: bounds.startDate,
-          start_date: bounds.startDate,
-          end_date: bounds.endDate,
-          branch_id: s.branch_id,
-          branch_name: s.branch_name,
-          amount: Number(s.bonus_amount),
-          category: 'Thưởng doanh số',
-          notes: `Thưởng doanh số tháng ${monthKey} - ${s.full_name || s.username} (${s.tier_label})`,
-          created_by_name: 'Hệ thống',
-          is_auto: true,
-        });
-      }
-      cm += 1;
-      if (cm > 12) { cm = 1; cy += 1; }
-    }
+    const autoRows = await getBonusMiscRows(pool, start, end);
 
     const allRows = [
       ...result.rows.map(r => ({ ...r, amount: parseFloat(r.amount) })),
