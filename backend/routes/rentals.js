@@ -12,8 +12,10 @@ const {
 } = require('../utils/imageService');
 const {
   calculateCommissionPreview,
-  ensureCommissionSnapshotForCompletedRental
+  ensureCommissionSnapshotForCompletedRental,
+  recalculateSalerMonthTier
 } = require('../services/commissionService');
+const { getVNMonth } = require('../services/salesTierService');
 
 const router = express.Router();
 
@@ -1225,6 +1227,12 @@ router.put('/:id', authenticate, async (req, res) => {
       }
     }
 
+    // Đơn đã hoàn tất bị chuyển trạng thái khác / đổi sale -> doanh số tháng của sale cũ thay đổi
+    if (old.status === 'completed' && old.returned_at &&
+        (statusToSave !== 'completed' || Number(old.user_id || 0) !== Number(finalUserId || 0))) {
+      await recalculateSalerMonthTier(client, old.user_id, getVNMonth(old.returned_at), req.user.id);
+    }
+
     await client.query('COMMIT');
     // logging diff
     const custRes = await pool.query('SELECT name FROM customers WHERE id=$1', [customer_id]);
@@ -1345,7 +1353,7 @@ router.patch('/:id/status', authenticate, requireStatusManager, async (req, res)
   try {
     await client.query('BEGIN');
     const oldResult = await client.query(`
-      SELECT r.status, r.code, r.handover_user_id, e.owner_id,
+      SELECT r.status, r.code, r.handover_user_id, r.user_id, r.returned_at, e.owner_id,
         EXISTS (
           SELECT 1 FROM rental_items ri
           JOIN equipment eq ON eq.id = ri.equipment_id
@@ -1379,6 +1387,8 @@ router.patch('/:id/status', authenticate, requireStatusManager, async (req, res)
 
     if (status === 'completed' && oldStatus !== 'completed') {
       await ensureCommissionSnapshotForCompletedRental(client, Number(id), req.user.id);
+    } else if (oldStatus === 'completed' && status !== 'completed' && oldResult.rows[0].returned_at) {
+      await recalculateSalerMonthTier(client, oldResult.rows[0].user_id, getVNMonth(oldResult.rows[0].returned_at), req.user.id);
     }
 
     await client.query('COMMIT');
@@ -1466,6 +1476,8 @@ router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    const delInfoRes = await client.query('SELECT status, user_id, returned_at FROM rentals WHERE id = $1', [id]);
+    const delInfo = delInfoRes.rows[0] || {};
     // Soft delete related tasks
     await client.query('UPDATE tasks SET is_deleted = true, updated_at = NOW(), updated_by = $1 WHERE related_rental_id = $2', [req.user.id, id]);
     // Soft delete related financial transactions
@@ -1482,6 +1494,9 @@ router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
     }
     const rentalCode = result.rows[0].code;
     await softDeleteEntityImages(client, 'rentals', id, req.user.id);
+    if (delInfo.status === 'completed' && delInfo.returned_at) {
+      await recalculateSalerMonthTier(client, delInfo.user_id, getVNMonth(delInfo.returned_at), req.user.id);
+    }
     await client.query('COMMIT');
     await logActivity('DELETE', 'rental', parseInt(id), `Xóa đơn thuê ${rentalCode} và các dữ liệu liên quan (tác vụ, giao dịch)`, req.user.id);
     res.json({ message: 'Rental and related data deleted' });

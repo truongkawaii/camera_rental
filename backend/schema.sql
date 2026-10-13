@@ -340,6 +340,7 @@ CREATE TABLE IF NOT EXISTS payroll_snapshots (
   paid_to_upline            DECIMAL(12, 2) NOT NULL DEFAULT 0,
   received_from_downline    DECIMAL(12, 2) NOT NULL DEFAULT 0,
   has_ledger_breakdown      BOOLEAN NOT NULL DEFAULT FALSE,
+  bonus_amount              DECIMAL(12, 2) NOT NULL DEFAULT 0,
   locked_by         INTEGER REFERENCES users(id),
   locked_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   inserted_at       TIMESTAMPTZ DEFAULT NOW(),
@@ -349,6 +350,23 @@ CREATE TABLE IF NOT EXISTS payroll_snapshots (
   is_deleted        BOOLEAN DEFAULT FALSE,
   UNIQUE (user_id, month)
 );
+
+-- Sale monthly commission overrides (chính sách thi đua doanh số: admin ghi đè % / thưởng cho 1 tháng)
+CREATE TABLE IF NOT EXISTS sale_monthly_commission_overrides (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  month VARCHAR(7) NOT NULL,
+  rate_percent DECIMAL(8, 4),
+  bonus_amount DECIMAL(12, 2),
+  notes TEXT,
+  inserted_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  inserted_by INTEGER,
+  updated_by INTEGER,
+  is_deleted BOOLEAN DEFAULT FALSE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sale_monthly_overrides_user_month
+  ON sale_monthly_commission_overrides(user_id, month);
 
 -- Ads costs table
 CREATE TABLE IF NOT EXISTS ads_costs (

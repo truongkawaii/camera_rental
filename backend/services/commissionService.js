@@ -1,3 +1,12 @@
+const {
+  isTierMonth,
+  getVNMonth,
+  getMonthRange,
+  isMonthLocked,
+  isTieredSaler,
+  resolveSalerMonthCommission
+} = require('./salesTierService');
+
 const toNumber = (value, fallback = 0) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -207,9 +216,32 @@ const calculateCommissionPreview = async (client, payload) => {
   const baseAmount = Math.max(0, toNumber(total_price));
   const salerId = user_id ? Number(user_id) : null;
   const driverId = handover_user_id ? Number(handover_user_id) : null;
+  const monthStr = payload.month || getVNMonth(effectiveAt);
 
+  // Saler: từ tháng 2026-10 hoa hồng tự động theo doanh số tháng của sale (hoặc admin ghi đè cho tháng đó).
+  // Các trường hợp còn lại (tháng cũ / user không phải sale) vẫn dùng rule set như trước.
+  let salerTierInfo = null;
+  let salerRuleSet = null;
+  if (salerId) {
+    salerTierInfo = await resolveSalerMonthCommission(client, salerId, monthStr, {
+      excludeRentalId: rental_id,
+      extraRevenue: baseAmount
+    });
+    if (salerTierInfo.applicable) {
+      salerRuleSet = {
+        id: null,
+        name: salerTierInfo.rate_source === 'override'
+          ? `Admin chỉnh cho tháng ${monthStr}`
+          : `Tự động theo doanh số (${salerTierInfo.tier_label})`,
+        effective_from: null,
+        effective_to: null,
+        rate: salerTierInfo.rate_percent
+      };
+    } else {
+      salerRuleSet = await getRuleSetForUserRole(client, salerId, 'saler', effectiveAt);
+    }
+  }
   // Look up rule set per user + role, so saler & driver can use different rule sets
-  const salerRuleSet = await getRuleSetForUserRole(client, salerId, 'saler', effectiveAt);
   const driverRuleSet = await getRuleSetForUserRole(client, driverId, 'driver', effectiveAt);
 
   const salerRate = salerRuleSet ? toNumber(salerRuleSet.rate) : 0;
@@ -305,6 +337,17 @@ const calculateCommissionPreview = async (client, payload) => {
       driver_user_id: driverId
     },
     base_amount: baseAmount,
+    month: monthStr,
+    sale_tier: salerTierInfo && salerTierInfo.applicable
+      ? {
+          month: monthStr,
+          revenue: salerTierInfo.revenue,
+          tier_label: salerTierInfo.tier_label,
+          rate_percent: salerTierInfo.rate_percent,
+          rate_source: salerTierInfo.rate_source,
+          bonus_amount: salerTierInfo.bonus_amount
+        }
+      : null,
     lines: commissionLines,
     totals,
     grand_total_commission: roundMoney(totals.reduce((sum, item) => sum + toNumber(item.commission_amount), 0))
@@ -350,11 +393,11 @@ const replaceRentalLedger = async (client, rentalId, lines, userId) => {
 };
 
 const ensureCommissionSnapshotForCompletedRental = async (client, rentalId, actedByUserId, options = {}) => {
-  const { forceRecalc = false } = options;
+  const { forceRecalc = false, skipTierCascade = false } = options;
 
   const rentalResult = await client.query(
     `
-      SELECT id, status, total_price, user_id, handover_user_id
+      SELECT id, status, total_price, user_id, handover_user_id, returned_at
       FROM rentals
       WHERE id = $1
         AND is_deleted = false
@@ -388,21 +431,56 @@ const ensureCommissionSnapshotForCompletedRental = async (client, rentalId, acte
     return { created: false, reason: 'already_exists' };
   }
 
+  const month = getVNMonth(rental.returned_at || new Date());
   const preview = await calculateCommissionPreview(client, {
     rental_id: rental.id,
     total_price: rental.total_price,
     user_id: rental.user_id,
     handover_user_id: rental.handover_user_id,
-    effective_at: new Date()
+    effective_at: new Date(),
+    month
   });
 
   await replaceRentalLedger(client, rental.id, preview.lines, actedByUserId);
+
+  if (!skipTierCascade) {
+    await recalculateSalerMonthTier(client, rental.user_id, month, actedByUserId, { exceptRentalId: rental.id });
+  }
 
   return {
     created: true,
     reason: forceRecalc ? 'recalculated' : 'created',
     preview
   };
+};
+
+// Doanh số tháng của sale đổi => tỉ lệ bậc đổi => tính lại hoa hồng mọi đơn hoàn tất trong tháng đó.
+const recalculateSalerMonthTier = async (client, userId, month, actedByUserId, options = {}) => {
+  const { exceptRentalId = null } = options;
+  if (!userId || !month || !isTierMonth(month)) return { recalculated: 0 };
+  if (!(await isTieredSaler(client, userId))) return { recalculated: 0 };
+  if (await isMonthLocked(client, month)) return { recalculated: 0 };
+
+  const { start, end } = getMonthRange(month);
+  const rentals = await client.query(
+    `SELECT id FROM rentals
+     WHERE user_id = $1 AND status = 'completed' AND is_deleted = false
+       AND returned_at >= $2 AND returned_at < $3
+       AND ($4::int IS NULL OR id <> $4)
+     ORDER BY id`,
+    [userId, start, end, exceptRentalId]
+  );
+  for (const r of rentals.rows) {
+    await ensureCommissionSnapshotForCompletedRental(client, r.id, actedByUserId, { forceRecalc: true, skipTierCascade: true });
+  }
+  return { recalculated: rentals.rows.length };
+};
+
+// Dùng khi đơn bị đổi trạng thái/xoá/đổi sale: tính lại tháng của sale liên quan.
+const cascadeTierForRental = async (client, rentalId, actedByUserId) => {
+  const r = await client.query(`SELECT user_id, returned_at FROM rentals WHERE id = $1 LIMIT 1`, [rentalId]);
+  if (!r.rows.length || !r.rows[0].returned_at) return { recalculated: 0 };
+  return recalculateSalerMonthTier(client, r.rows[0].user_id, getVNMonth(r.rows[0].returned_at), actedByUserId);
 };
 
 // Apply rate and assignment edits to the current and immediately preceding
@@ -447,6 +525,8 @@ const recalculateRecentMonthCommissions = async (client, userIds, roleName, acte
 module.exports = {
   calculateCommissionPreview,
   ensureCommissionSnapshotForCompletedRental,
+  recalculateSalerMonthTier,
+  cascadeTierForRental,
   recalculateRecentMonthCommissions,
   getActiveRuleSet,
   getRuleSetForUserRole,

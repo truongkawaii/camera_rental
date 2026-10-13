@@ -199,6 +199,9 @@ export const getActivityLogs = (page = 1, limit = 20, search = '', startDate = '
 };
 export const getPayroll = (month) => api.get(`/payroll${month ? `?month=${month}` : ''}`);
 export const lockPayroll = (month) => api.post('/payroll/lock', { month });
+export const updateSaleMonthOverride = (data) => api.put('/payroll/sale-override', data);
+export const getSaleTiers = () => api.get('/payroll/sale-tiers');
+export const getMonthlyRevenue = (year) => api.get(`/performance/monthly-revenue?year=${year}`);
 export const getPayrollTransfers = (month) => api.get(`/payroll/transfers${month ? `?month=${month}` : ''}`);
 export const createPayrollTransfer = (data) => api.post('/payroll/transfers', data);
 export const updatePayrollTransfer = (id, data) => api.put(`/payroll/transfers/${id}`, data);

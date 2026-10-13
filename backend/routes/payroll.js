@@ -30,6 +30,16 @@ const {
   softDeleteEntityImages,
   ImageServiceError
 } = require('../utils/imageService');
+const {
+  TIER_START_MONTH,
+  SALE_TIERS,
+  isTierMonth,
+  isValidMonth,
+  isMonthLocked,
+  isTieredSaler,
+  getMonthSalerSummaries
+} = require('../services/salesTierService');
+const { recalculateSalerMonthTier } = require('../services/commissionService');
 
 const router = express.Router();
 
@@ -209,11 +219,16 @@ async function calcRealtimePayroll(startStr, endStr) {
     ORDER BY managed_revenue DESC, managed_orders_count DESC
   `, [startStr, endStr]);
 
+  const tierMonth = String(startStr).slice(0, 7);
+  const tierSummaries = await getMonthSalerSummaries(pool, tierMonth);
+
   return result.rows.map(user => {
     const roleList = user.role_names ? user.role_names.split(',') : [];
     const managed_revenue = Number(user.managed_revenue);
     const commission_amount = Number(user.managed_commission || 0);
-    const effectiveCommissionRate = Number(user.display_commission_rate || 0);
+    let effectiveCommissionRate = Number(user.display_commission_rate || 0);
+    const tier = tierSummaries.get(user.id);
+    if (tier) effectiveCommissionRate = Number(tier.rate_percent || 0) / 100;
     // Display primary role name (prefer camera_manager > admin > saler)
     const primaryRole = roleList.includes('admin') ? 'admin'
       : roleList.includes('camera_manager') ? 'camera_manager'
@@ -238,6 +253,17 @@ async function calcRealtimePayroll(startStr, endStr) {
       paid_to_upline: Number(user.paid_to_upline || 0),
       received_from_downline: Number(user.received_from_downline || 0),
       has_ledger_breakdown: user.has_ledger_breakdown === true,
+      // Chính sách thi đua doanh số (chỉ sale, từ tháng 2026-10)
+      is_tiered: !!tier,
+      bonus_amount: tier ? Number(tier.bonus_amount || 0) : 0,
+      rate_source: tier ? tier.rate_source : null,
+      bonus_source: tier ? tier.bonus_source : null,
+      tier_label: tier ? tier.tier_label : null,
+      tier_revenue: tier ? Number(tier.revenue || 0) : 0,
+      tier_rate_percent: tier ? tier.tier_rate_percent : null,
+      tier_bonus_amount: tier ? tier.tier_bonus_amount : null,
+      override_rate_percent: tier ? tier.override_rate_percent : null,
+      override_bonus_amount: tier ? tier.override_bonus_amount : null,
     };
   });
 }
@@ -372,6 +398,8 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
           paid_to_upline: Number(r.paid_to_upline || 0),
           received_from_downline: Number(r.received_from_downline || 0),
           has_ledger_breakdown: r.has_ledger_breakdown === true,
+          is_tiered: isTierMonth(monthStr) && r.role_name === 'saler',
+          bonus_amount: Number(r.bonus_amount || 0),
         })),
       });
     }
@@ -450,15 +478,16 @@ router.post('/lock', authenticate, requireAdmin, async (req, res) => {
              (user_id, month, full_name, username, role_name, branch_name,
               base_salary, commission_rate, managed_revenue, commission_amount,
               total_payable, saler_commission_amount, driver_commission_amount,
-              paid_to_upline, received_from_downline, has_ledger_breakdown,
+              paid_to_upline, received_from_downline, has_ledger_breakdown, bonus_amount,
               locked_by, locked_at, inserted_by, updated_by)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NOW(), $17, $17)`,
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,NOW(), $18, $18)`,
           [
             p.id, monthStr, p.full_name, p.username, p.role_name, p.branch_name,
             p.base_salary, p.commission_rate, p.managed_revenue,
             p.commission_amount, p.total_payable,
             p.saler_commission_amount, p.driver_commission_amount,
             p.paid_to_upline, p.received_from_downline, p.has_ledger_breakdown,
+            Number(p.bonus_amount || 0),
             lockedBy,
           ]
         );
@@ -479,6 +508,91 @@ router.post('/lock', authenticate, requireAdmin, async (req, res) => {
   } catch (error) {
     console.error('Payroll LOCK error:', error);
     res.status(500).json({ error: 'Không thể chốt lương. Vui lòng thử lại.' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// GET /api/payroll/sale-tiers — bảng chính sách thi đua doanh số
+// ─────────────────────────────────────────────────────────────────────
+router.get('/sale-tiers', authenticate, requireAdmin, (req, res) => {
+  res.json({
+    start_month: TIER_START_MONTH,
+    tiers: SALE_TIERS.map(t => ({
+      key: t.key,
+      label: t.label,
+      min: t.min,
+      max: Number.isFinite(t.max) ? t.max : null,
+      rate_percent: t.rate_percent,
+      bonus_amount: t.bonus_amount,
+    })),
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// PUT /api/payroll/sale-override — Admin sửa % hoa hồng / tiền thưởng của 1 sale cho 1 tháng
+// Body: { user_id, month, rate_percent|null, bonus_amount|null, notes }
+// null / rỗng cho cả hai = xoá ghi đè, quay về tự tính theo doanh số.
+// ─────────────────────────────────────────────────────────────────────
+router.put('/sale-override', authenticate, requireAdmin, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { user_id, month, notes } = req.body;
+    const parseNullable = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
+    const rate = parseNullable(req.body.rate_percent);
+    const bonus = parseNullable(req.body.bonus_amount);
+
+    if (!isValidMonth(month) || !isTierMonth(month)) {
+      return res.status(400).json({ error: `Chỉ áp dụng cho tháng từ ${TIER_START_MONTH}` });
+    }
+    if ((rate !== null && (!Number.isFinite(rate) || rate < 0 || rate > 100)) ||
+        (bonus !== null && (!Number.isFinite(bonus) || bonus < 0))) {
+      return res.status(400).json({ error: 'Tỉ lệ (0-100%) hoặc tiền thưởng (>= 0) không hợp lệ' });
+    }
+    if (!(await isTieredSaler(client, Number(user_id)))) {
+      return res.status(400).json({ error: 'Nhân viên không phải sale' });
+    }
+    if (await isMonthLocked(client, month)) {
+      return res.status(409).json({ error: `Lương tháng ${month} đã chốt, không thể chỉnh sửa.` });
+    }
+
+    await client.query('BEGIN');
+    if (rate === null && bonus === null) {
+      await client.query(
+        `UPDATE sale_monthly_commission_overrides SET is_deleted = true, updated_at = NOW(), updated_by = $3
+         WHERE user_id = $1 AND month = $2`,
+        [user_id, month, req.user.id]
+      );
+    } else {
+      await client.query(
+        `INSERT INTO sale_monthly_commission_overrides (user_id, month, rate_percent, bonus_amount, notes, inserted_by, updated_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $6)
+         ON CONFLICT (user_id, month) DO UPDATE
+           SET rate_percent = EXCLUDED.rate_percent,
+               bonus_amount = EXCLUDED.bonus_amount,
+               notes = EXCLUDED.notes,
+               is_deleted = false,
+               updated_at = NOW(),
+               updated_by = EXCLUDED.updated_by`,
+        [user_id, month, rate, bonus, notes || null, req.user.id]
+      );
+    }
+    const recalculated = await recalculateSalerMonthTier(client, Number(user_id), month, req.user.id);
+    await client.query('COMMIT');
+
+    await logActivity(
+      'UPDATE',
+      'sale_commission_override',
+      Number(user_id),
+      `Admin ${rate === null && bonus === null ? 'xoá chỉnh sửa' : 'chỉnh sửa'} hoa hồng/thưởng tháng ${month} của user #${user_id}: % = ${rate ?? 'tự động'}, thưởng = ${bonus ?? 'tự động'}`,
+      req.user.id
+    );
+    res.json({ message: 'Đã cập nhật', recalculated: recalculated.recalculated });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Payroll sale-override error:', error);
+    res.status(500).json({ error: 'Không thể cập nhật hoa hồng/thưởng' });
+  } finally {
+    client.release();
   }
 });
 

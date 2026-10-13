@@ -18,6 +18,7 @@ const {
   softDeleteEntityImages,
   ImageServiceError
 } = require('../utils/imageService');
+const { getMonthSalerSummaries } = require('../services/salesTierService');
 
 const router = express.Router();
 
@@ -174,7 +175,11 @@ router.get('/', authenticate, requireSaler, async (req, res) => {
     const totalOrderValue = orderValueResult.rows.length > 0 ? Number(orderValueResult.rows[0].total_order_value) : 0;
     const totalOrders = orderValueResult.rows.length > 0 ? Number(orderValueResult.rows[0].total_orders) : 0;
 
-    const netPayable = createdRevenue - commissionAmount - driverCommissionAmount;
+    // Thưởng doanh số (chính sách thi đua, từ 2026-10): sale được giữ lại => trừ vào số tiền phải chuyển
+    const tierSummary = (await getMonthSalerSummaries(pool, monthStr)).get(req.user.id) || null;
+    const bonusAmount = tierSummary ? Number(tierSummary.bonus_amount || 0) : 0;
+
+    const netPayable = createdRevenue - commissionAmount - driverCommissionAmount - bonusAmount;
 
     return res.json({
       month: monthStr,
@@ -185,6 +190,14 @@ router.get('/', authenticate, requireSaler, async (req, res) => {
       total_order_value: totalOrderValue,
       total_revenue: createdRevenue,
       commission_amount: commissionAmount,
+      bonus_amount: bonusAmount,
+      tier: tierSummary ? {
+        label: tierSummary.tier_label,
+        revenue: tierSummary.revenue,
+        rate_percent: tierSummary.rate_percent,
+        rate_source: tierSummary.rate_source,
+        bonus_source: tierSummary.bonus_source,
+      } : null,
       referral_commission_amount: referralCommissionAmount, // NEW breakdown
       total_orders: totalOrders,
       transfers: await Promise.all(result.rows.map(async (r) => {

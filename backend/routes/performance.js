@@ -621,4 +621,42 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/performance/monthly-revenue?year=YYYY
+ * Admin only. Doanh số từng tháng trong năm (đơn completed, theo tháng returned_at giờ VN).
+ */
+router.get('/monthly-revenue', authenticate, async (req, res) => {
+  try {
+    if (!hasRole(req.user, 'admin')) {
+      return res.status(403).json({ error: 'Chỉ admin mới được xem biểu đồ này.' });
+    }
+    const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+    const result = await pool.query(
+      `SELECT EXTRACT(MONTH FROM (r.returned_at AT TIME ZONE 'Asia/Ho_Chi_Minh'))::int AS month,
+              COALESCE(SUM(r.total_price), 0)::numeric AS revenue,
+              COUNT(*)::int AS orders
+       FROM rentals r
+       WHERE r.status = 'completed'
+         AND r.is_deleted = false
+         AND r.returned_at >= ($1::text || '-01-01 00:00:00+07')::timestamptz
+         AND r.returned_at < (($1::int + 1)::text || '-01-01 00:00:00+07')::timestamptz
+       GROUP BY 1`,
+      [String(year)]
+    );
+    const byMonth = new Map(result.rows.map(row => [row.month, row]));
+    const months = Array.from({ length: 12 }, (_, i) => {
+      const row = byMonth.get(i + 1);
+      return {
+        month: i + 1,
+        revenue: row ? Number(row.revenue) : 0,
+        orders: row ? row.orders : 0,
+      };
+    });
+    res.json({ year, months });
+  } catch (error) {
+    console.error('Failed to fetch monthly revenue:', error);
+    res.status(500).json({ error: 'Failed to fetch monthly revenue' });
+  }
+});
+
 module.exports = router;

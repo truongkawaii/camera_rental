@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getSaleTransfers, createSaleTransfer, updateSaleTransfer, deleteSaleTransfer, uploadSaleTransferImage } from '../../api/client';
-import { Wallet, Send, Trash2, Plus, X, ArrowUpCircle, Clock, CheckCircle2, Upload, Eye, Pencil, TrendingUp, TrendingDown, ShoppingBag, Calculator } from 'lucide-react';
+import { Wallet, Send, Trash2, Plus, X, ArrowUpCircle, Clock, CheckCircle2, Upload, Eye, Pencil, TrendingUp, TrendingDown, ShoppingBag, Calculator, Gift } from 'lucide-react';
 import { useToast, ToastContainer } from '../../components/Toast';
 import ModernMonthPicker from '../../components/ModernMonthPicker';
 import ModernDateTimePicker from '../../components/ModernDateTimePicker';
@@ -13,7 +13,7 @@ const SaleTransfer = () => {
   const [selectedMonth, setSelectedMonth] = useState(
     new Date().toISOString().slice(0, 7)
   );
-  const [summary, setSummary] = useState({ total_payable: 0, total_transferred: 0, remaining: 0, total_order_value: 0, total_revenue: 0, commission_amount: 0, referral_commission_amount: 0, total_orders: 0 });
+  const [summary, setSummary] = useState({ total_payable: 0, total_transferred: 0, remaining: 0, total_order_value: 0, total_revenue: 0, commission_amount: 0, referral_commission_amount: 0, total_orders: 0, bonus_amount: 0, tier: null });
   const [transfers, setTransfers] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -47,6 +47,8 @@ const SaleTransfer = () => {
         commission_amount: Number(res.data.commission_amount || 0),
         referral_commission_amount: Number(res.data.referral_commission_amount || 0),
         total_orders: Number(res.data.total_orders || 0),
+        bonus_amount: Number(res.data.bonus_amount || 0),
+        tier: res.data.tier || null,
       });
     } catch (err) {
       console.error(err);
@@ -257,7 +259,7 @@ const SaleTransfer = () => {
         </div>
 
         {/* ═══════ Performance Stat Cards (4 ô như /performance) ═══════ */}
-        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4 xl:gap-4">
+        <div className={`grid grid-cols-2 gap-3 ${summary.tier ? 'xl:grid-cols-5' : 'xl:grid-cols-4'} xl:gap-4`}>
           {/* Doanh Số Tổng */}
           <div className="bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-600 rounded-3xl p-3 md:p-4 text-white shadow-xl shadow-blue-100/50 overflow-hidden relative group border border-white/10">
             <div className="relative z-10 h-full flex flex-col justify-between">
@@ -339,6 +341,31 @@ const SaleTransfer = () => {
             </div>
             <ShoppingBag size={80} className="absolute -right-2 -bottom-2 text-white/5 group-hover:scale-110 transition-transform duration-700" />
           </div>
+
+          {/* Thưởng Doanh Số (chính sách thi đua) */}
+          {summary.tier && (
+            <div className="bg-gradient-to-br from-pink-500 via-rose-500 to-red-500 rounded-3xl p-3 md:p-4 text-white shadow-xl shadow-rose-100/50 overflow-hidden relative group border border-white/10">
+              <div className="relative z-10 h-full flex flex-col justify-between">
+                <div className="mb-2.5 flex items-center gap-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/20 backdrop-blur-md">
+                    <Gift size={16} />
+                  </div>
+                  <p className="text-rose-50/90 text-[9px] font-bold uppercase tracking-wide">Thưởng Doanh Số</p>
+                </div>
+                <div>
+                  <h2 className="text-base md:text-xl font-bold mt-1">
+                    {Math.round(summary.bonus_amount).toLocaleString('vi-VN')}
+                    <span className="text-[10px] ml-1 opacity-70">VND</span>
+                  </h2>
+                  <p className="text-[10px] text-white/70 mt-0.5">
+                    {summary.tier.label} · HH {summary.tier.rate_percent}%
+                  </p>
+                  <p className="text-[10px] text-white/60">đã trừ vào số tiền phải chuyển</p>
+                </div>
+              </div>
+              <Gift size={80} className="absolute -right-2 -bottom-2 text-white/5 group-hover:scale-110 transition-transform duration-700" />
+            </div>
+          )}
         </div>
 
         {/* ═══════ Summary Cards ═══════ */}

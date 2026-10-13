@@ -182,7 +182,7 @@ const MiscCosts = () => {
                 ) : (
                    safeMiscList.map(item => (
                      <tr key={item.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 text-sm font-medium text-gray-900">{fmtMiscCode(item.id)}</td>
+                        <td className="px-6 py-4 text-sm font-medium text-gray-900">{item.is_auto ? 'Tự động' : fmtMiscCode(item.id)}</td>
                         <td className="px-6 py-4 text-sm text-gray-600">{fmtMiscRange(item)}</td>
                         <td className="px-6 py-4 text-sm text-gray-600">{item.branch_name || '-'}</td>
                         <td className="px-6 py-4 text-sm text-gray-900 font-semibold">{item.category || '-'}</td>
@@ -190,12 +190,16 @@ const MiscCosts = () => {
                         <td className="px-6 py-4 text-sm text-gray-500 italic max-w-[200px] truncate">{item.notes || '-'}</td>
                         <td className="px-6 py-4">
                            <div className="flex justify-end gap-2">
+                             {item.is_auto ? (
+                               <span className="text-[11px] text-gray-400 italic whitespace-nowrap">Hệ thống tính</span>
+                             ) : (<>
                              <button onClick={() => openMiscModal(item)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-white rounded-lg border border-transparent hover:border-gray-200">
                                <Edit size={16} />
                              </button>
                              <button onClick={() => handleDeleteMisc(item.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
                                <Trash2 size={16} />
                              </button>
+                             </>)}
                            </div>
                         </td>
                      </tr>

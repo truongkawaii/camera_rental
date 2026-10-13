@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { getPayroll, lockPayroll, getPayrollTransfers, createPayrollTransfer, updatePayrollTransfer, deletePayrollTransfer, uploadPayrollTransferImage, getAdsCosts, createAdsCost, updateAdsCost, deleteAdsCost, getMiscCosts, createMiscCost, updateMiscCost, deleteMiscCost, getBranches, getRevenueByBranch, getCommissionReconciliation, getUsers } from '../../api/client';
+import { getPayroll, lockPayroll, updateSaleMonthOverride, getPayrollTransfers, createPayrollTransfer, updatePayrollTransfer, deletePayrollTransfer, uploadPayrollTransferImage, getAdsCosts, createAdsCost, updateAdsCost, deleteAdsCost, getMiscCosts, createMiscCost, updateMiscCost, deleteMiscCost, getBranches, getRevenueByBranch, getCommissionReconciliation, getUsers } from '../../api/client';
 import {
   Wallet, Calendar, Download, TrendingUp, ArrowUpRight,
   Lock, Unlock, AlertTriangle, CheckCircle2, ShieldCheck, RefreshCw,
@@ -142,6 +142,11 @@ const Payroll = () => {
   const [imagePreview, setImagePreview] = useState(null);
   const [expandedIds, setExpandedIds] = useState([]);
   const [reconciliation, setReconciliation] = useState(null);
+
+  // -- Sale tier override (chính sách thi đua doanh số) --
+  const [overrideTarget, setOverrideTarget] = useState(null);
+  const [overrideForm, setOverrideForm] = useState({ rate_percent: '', bonus_amount: '' });
+  const [savingOverride, setSavingOverride] = useState(false);
 
   // -- User Transfer Detail Modal --
   const [showUserTransferModal, setShowUserTransferModal] = useState(false);
@@ -528,6 +533,36 @@ const Payroll = () => {
       setMiscForm({ date: dateToUse, start_date: dateToUse, end_date: dateToUse, amount: '', category: '', branch_id: branches[0]?.id || '', notes: '' });
     }
     setShowMiscModal(true);
+  };
+
+  const canEditOverride = (item) => item.is_tiered && !meta.is_locked && selectedMonth >= '2026-10';
+
+  const openOverrideModal = (item) => {
+    setOverrideTarget(item);
+    setOverrideForm({
+      rate_percent: item.override_rate_percent !== null && item.override_rate_percent !== undefined ? String(item.override_rate_percent) : '',
+      bonus_amount: item.override_bonus_amount !== null && item.override_bonus_amount !== undefined ? formatCurrencyInput(String(item.override_bonus_amount)) : '',
+    });
+  };
+
+  const saveOverride = async (reset = false) => {
+    if (!overrideTarget) return;
+    setSavingOverride(true);
+    try {
+      await updateSaleMonthOverride({
+        user_id: overrideTarget.id,
+        month: selectedMonth,
+        rate_percent: reset || overrideForm.rate_percent === '' ? null : Number(overrideForm.rate_percent),
+        bonus_amount: reset || overrideForm.bonus_amount === '' ? null : Number(parseCurrencyInput(overrideForm.bonus_amount)),
+      });
+      toast.success(reset ? 'Đã quay về tính tự động theo doanh số' : 'Đã cập nhật hoa hồng/thưởng tháng này');
+      setOverrideTarget(null);
+      loadPayroll();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Không thể cập nhật');
+    } finally {
+      setSavingOverride(false);
+    }
   };
 
   const loadPayroll = async () => {
@@ -1041,6 +1076,25 @@ const Payroll = () => {
                           })()}
                         </div>
 
+                        {/* Thưởng doanh số */}
+                        {item.is_tiered && (
+                          <div className="bg-rose-50/60 rounded-xl p-3 flex items-center justify-between">
+                            <div>
+                              <p className="text-[11px] text-gray-400 font-medium">Thưởng doanh số · HH {(Number(item.commission_rate) * 100).toFixed(1)}%</p>
+                              <p className="text-[13px] font-bold text-rose-600">{fmtVND(item.bonus_amount || 0)}</p>
+                            </div>
+                            {canEditOverride(item) && (
+                              <button
+                                type="button"
+                                onClick={() => openOverrideModal(item)}
+                                className="p-2 text-gray-400 hover:text-primary rounded-lg"
+                              >
+                                <Edit size={14} />
+                              </button>
+                            )}
+                          </div>
+                        )}
+
                         {/* Chi tiết hoa hồng (nếu có ledger) */}
                         {item.has_ledger_breakdown && (
                           <div className="bg-white rounded-xl p-3">
@@ -1082,7 +1136,7 @@ const Payroll = () => {
                           const createdRev = Number(item.created_revenue || 0);
                           const commission = Number(item.commission_amount || 0);
                           const driverCommission = Number(item.driver_commission_amount || 0);
-                          const remaining = createdRev - commission - transferred;
+                          const remaining = createdRev - commission - Number(item.bonus_amount || 0) - transferred;
                           if (transferred === 0 && createdRev === 0) return null;
                           return (
                             <div
@@ -1219,11 +1273,28 @@ const Payroll = () => {
                           })()}
                         </p>
                       </td>
-                      <td className="px-3 lg:px-6 py-4 text-right whitespace-nowrap">
+                       <td className="px-3 lg:px-6 py-4 text-right whitespace-nowrap">
                         <p className="text-sm font-semibold text-purple-600">{fmtVND(item.commission_amount)}</p>
                         <p className="text-[11px] text-purple-400 font-medium">
-                          Mức {(Number(item.commission_rate) * 100).toFixed(1)}%
+                          Mức {(Number(item.commission_rate) * 100).toFixed(1)}%{item.is_tiered && item.rate_source === 'override' ? ' (chỉnh tay)' : ''}
                         </p>
+                        {item.is_tiered && (
+                          <div className="mt-1 flex items-center justify-end gap-1.5">
+                            <span className="text-[11px] font-semibold text-rose-500" title={item.tier_label || ''}>
+                              Thưởng: {fmtVND(item.bonus_amount || 0)}{item.bonus_source === 'override' ? ' (chỉnh tay)' : ''}
+                            </span>
+                            {canEditOverride(item) && (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); openOverrideModal(item); }}
+                                className="p-1 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-md"
+                                title="Sửa % hoa hồng / thưởng của tháng này"
+                              >
+                                <Edit size={12} />
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td className="px-3 lg:px-6 py-4 text-right whitespace-nowrap">
                         {(() => {
@@ -1245,7 +1316,7 @@ const Payroll = () => {
                           const createdRev = Number(item.created_revenue || 0);
                           const commission = Number(item.commission_amount || 0);
                           const driverCommission = Number(item.driver_commission_amount || 0);
-                          const remaining = createdRev - commission - transferred;
+                          const remaining = createdRev - commission - Number(item.bonus_amount || 0) - transferred;
                           return remaining > 0
                             ? <span className="text-sm font-bold text-rose-600">{fmtVND(remaining)}</span>
                             : remaining === 0
@@ -1290,7 +1361,7 @@ const Payroll = () => {
                                 const createdRev = Number(item.created_revenue || 0);
                                 const commission = Number(item.commission_amount || 0);
                                 const driverCommission = Number(item.driver_commission_amount || 0);
-                                const remaining = createdRev - commission - transferred;
+                                const remaining = createdRev - commission - Number(item.bonus_amount || 0) - transferred;
                                 const isSurplus = transferred > commission;
                                 if (transferred === 0 && createdRev === 0) return null;
                                 return (
@@ -1334,7 +1405,7 @@ const Payroll = () => {
                             const createdRev = Number(item.created_revenue || 0);
                             const commission = Number(item.commission_amount || 0);
                             const driverCommission = Number(item.driver_commission_amount || 0);
-                            const remaining = createdRev - commission - transferred;
+                            const remaining = createdRev - commission - Number(item.bonus_amount || 0) - transferred;
                             const isSurplus = transferred > commission;
                             if (transferred === 0 && createdRev === 0) return null;
                             return (
@@ -1386,6 +1457,75 @@ const Payroll = () => {
         </div>
 
         </div>
+
+      {overrideTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setOverrideTarget(null)}>
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Sửa hoa hồng & thưởng tháng {selectedMonth}</h3>
+                <p className="text-sm text-gray-500">{overrideTarget.full_name} (@{overrideTarget.username})</p>
+              </div>
+              <button type="button" onClick={() => setOverrideTarget(null)} className="p-1 text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="mt-3 rounded-xl bg-gray-50 p-3 text-xs text-gray-600">
+              Doanh số tháng: <b>{fmtVND(overrideTarget.tier_revenue || 0)}</b> · {overrideTarget.tier_label}<br />
+              Tự động: HH <b>{overrideTarget.tier_rate_percent}%</b> · Thưởng <b>{fmtVND(overrideTarget.tier_bonus_amount || 0)}</b>
+            </div>
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-500">% hoa hồng (để trống = tự động)</label>
+                <input
+                  id="override-rate-input"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value={overrideForm.rate_percent}
+                  onChange={(e) => setOverrideForm(f => ({ ...f, rate_percent: e.target.value }))}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                  placeholder={`Tự động: ${overrideTarget.tier_rate_percent}%`}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-500">Tiền thưởng (để trống = tự động)</label>
+                <input
+                  id="override-bonus-input"
+                  type="text"
+                  inputMode="numeric"
+                  value={overrideForm.bonus_amount}
+                  onChange={(e) => setOverrideForm(f => ({ ...f, bonus_amount: formatCurrencyInput(e.target.value) }))}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                  placeholder={`Tự động: ${Number(overrideTarget.tier_bonus_amount || 0).toLocaleString('vi-VN')}`}
+                />
+              </div>
+              <p className="text-[11px] text-gray-400">Chỉnh sửa chỉ áp dụng cho tháng này. Sang tháng mới hệ thống tự tính lại theo doanh số.</p>
+            </div>
+            <div className="mt-5 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                disabled={savingOverride || (overrideTarget.override_rate_percent === null && overrideTarget.override_bonus_amount === null)}
+                onClick={() => saveOverride(true)}
+                className="rounded-xl px-3 py-2 text-xs font-semibold text-gray-500 hover:bg-gray-100 disabled:opacity-40"
+              >
+                Về tự động
+              </button>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setOverrideTarget(null)} className="rounded-xl px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100">Hủy</button>
+                <button
+                  type="button"
+                  id="override-save-btn"
+                  disabled={savingOverride}
+                  onClick={() => saveOverride(false)}
+                  className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white hover:opacity-90 disabled:opacity-50"
+                >
+                  {savingOverride ? 'Đang lưu...' : 'Lưu'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ConfirmationModal
         {...confirmModal}

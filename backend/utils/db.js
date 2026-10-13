@@ -748,6 +748,28 @@ const initDB = async () => {
     await pool.query(`ALTER TABLE payroll_snapshots ADD COLUMN IF NOT EXISTS paid_to_upline DECIMAL(12, 2) NOT NULL DEFAULT 0`);
     await pool.query(`ALTER TABLE payroll_snapshots ADD COLUMN IF NOT EXISTS received_from_downline DECIMAL(12, 2) NOT NULL DEFAULT 0`);
     await pool.query(`ALTER TABLE payroll_snapshots ADD COLUMN IF NOT EXISTS has_ledger_breakdown BOOLEAN NOT NULL DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE payroll_snapshots ADD COLUMN IF NOT EXISTS bonus_amount DECIMAL(12, 2) NOT NULL DEFAULT 0`);
+
+    // Chính sách thi đua doanh số: admin ghi đè % hoa hồng / tiền thưởng của sale cho 1 tháng cụ thể
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS sale_monthly_commission_overrides (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        month VARCHAR(7) NOT NULL,
+        rate_percent DECIMAL(8, 4),
+        bonus_amount DECIMAL(12, 2),
+        notes TEXT,
+        inserted_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        inserted_by INTEGER,
+        updated_by INTEGER,
+        is_deleted BOOLEAN DEFAULT FALSE
+      )
+    `);
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_sale_monthly_overrides_user_month
+      ON sale_monthly_commission_overrides(user_id, month)
+    `);
 
     await pool.query(`ALTER TABLE entity_images ADD COLUMN IF NOT EXISTS secure_url TEXT`);
     await pool.query(`ALTER TABLE entity_images ADD COLUMN IF NOT EXISTS public_id VARCHAR(255)`);

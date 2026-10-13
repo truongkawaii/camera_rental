@@ -3,6 +3,7 @@ import { getPerformanceMetrics, getRevenueByBranch, getAdsCosts, getMiscCosts } 
 import { useAuth } from '../../context/AuthContext';
 import { TrendingUp, Award, ShoppingBag, CheckCircle, Clock, Users, ChevronRight, Star, Store, ChevronDown, ChevronUp, HelpCircle, Megaphone, Calculator, PieChart, Receipt, User } from 'lucide-react';
 import DateRangePicker, { getVNToday } from '../../components/DateRangePicker';
+import MonthlyRevenueChart from '../../components/MonthlyRevenueChart';
 
 const RENTAL_STATUS_MAP = {
   pending: { label: 'Chờ giao', dot: 'bg-amber-400', text: 'text-amber-600' },
@@ -458,6 +459,8 @@ const Performance = () => {
               )}
             </div>
 
+
+            {isAdmin && <MonthlyRevenueChart />}
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
               {/* Branch Revenue Section */}
