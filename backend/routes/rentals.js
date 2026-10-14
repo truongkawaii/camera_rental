@@ -231,6 +231,7 @@ const resolveAndPriceRentalItems = async (client, {
   discount_type = 'fixed',
   custom_total = null,
   canCustomTotal = false,
+  keepExistingDiscount = false,
   oldItemsMap = {}
 }) => {
   if (!Array.isArray(requestedEquipmentIds) || requestedEquipmentIds.length === 0) {
@@ -334,13 +335,14 @@ const resolveAndPriceRentalItems = async (client, {
   } else {
     let discountVal = 0;
     if (discount_type === 'percentage') {
-      const maxPct = canCustomTotal ? 100 : MAX_DISCOUNT_PERCENT;
+      const maxPct = (canCustomTotal || keepExistingDiscount) ? 100 : MAX_DISCOUNT_PERCENT;
       const pct = Math.min(Math.max(0, Number(discount_amount || 0)), maxPct);
       discountVal = Math.round(totalSubtotal * (pct / 100));
     } else {
       discountVal = Math.max(0, Number(discount_amount || 0));
     }
-    if (!canCustomTotal) {
+    // Giữ nguyên mức giảm đã có sẵn (do admin sửa) khi người sửa không đổi mức giảm
+    if (!canCustomTotal && !keepExistingDiscount) {
       discountVal = Math.min(discountVal, MAX_DISCOUNT_AMOUNT);
     }
     totalDiscount = Math.min(totalSubtotal, discountVal);
@@ -1114,6 +1116,8 @@ router.put('/:id', authenticate, async (req, res) => {
       discount_type: finalDiscountType,
       custom_total,
       canCustomTotal,
+      keepExistingDiscount: Number(finalDiscountAmount || 0) === Number(old.discount_amount || 0) &&
+        finalDiscountType === (old.discount_type || 'fixed'),
       oldItemsMap
     });
 

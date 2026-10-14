@@ -121,6 +121,13 @@ const RentalModal = ({
   const [previewError, setPreviewError] = useState('');
 
   const canEditTotal = Boolean(isAdmin || isCameraManager);
+  // Đơn đã có sẵn mức giảm (vd admin đã sửa) mà người dùng không đổi thì giữ nguyên, không bị giới hạn lại
+  const isExistingDiscountUnchanged = Boolean(
+    editingItem &&
+    Number(formData.discount_amount || 0) === Number(editingItem.discount_amount || 0) &&
+    (formData.discount_type || 'fixed') === (editingItem.discount_type || 'fixed')
+  );
+  const applyDiscountCap = !canEditTotal && !isExistingDiscountUnchanged;
 
   useEffect(() => {
     if (showModal) {
@@ -366,13 +373,13 @@ const RentalModal = ({
     const totalBeforeDiscount = itemsTotal + accessoriesTotal;
     let discountAmountVal = 0;
     if (formData.discount_type === 'percentage') {
-      const maxPct = canEditTotal ? 100 : MAX_DISCOUNT_PERCENT;
+      const maxPct = applyDiscountCap ? MAX_DISCOUNT_PERCENT : 100;
       const pct = Math.min(Number(formData.discount_amount || 0), maxPct);
       discountAmountVal = Math.round(totalBeforeDiscount * (pct / 100));
     } else {
       discountAmountVal = Number(formData.discount_amount || 0);
     }
-    if (!canEditTotal) {
+    if (applyDiscountCap) {
       discountAmountVal = Math.min(discountAmountVal, MAX_DISCOUNT_AMOUNT);
     }
 
@@ -1204,13 +1211,13 @@ const RentalModal = ({
             const totalBeforeDiscount = itemsTotal + accessoriesTotal;
             let discountAmountVal = 0;
             if (formData.discount_type === 'percentage') {
-              const maxPct = canEditTotal ? 100 : MAX_DISCOUNT_PERCENT;
+              const maxPct = applyDiscountCap ? MAX_DISCOUNT_PERCENT : 100;
               const pct = Math.min(Number(formData.discount_amount || 0), maxPct);
               discountAmountVal = Math.round(totalBeforeDiscount * (pct / 100));
             } else {
               discountAmountVal = Number(formData.discount_amount || 0);
             }
-            if (!canEditTotal) {
+            if (applyDiscountCap) {
               discountAmountVal = Math.min(discountAmountVal, MAX_DISCOUNT_AMOUNT);
             }
             // Tổng đơn thuê chỉ cho phép sửa tay đối với Admin và Quản lý Camera
