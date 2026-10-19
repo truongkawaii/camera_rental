@@ -20,7 +20,7 @@ test('commission preview changes from 30% to 15% and records an assigned 0% rate
     }
   };
 
-  const preview = () => calculateCommissionPreview(client, { total_price: 1000, user_id: 7 });
+  const preview = () => calculateCommissionPreview(client, { total_price: 1000, user_id: 7, month: '2026-09' });
   assert.equal((await preview()).lines[0].commission_amount, 300);
   rate = 15;
   assert.equal((await preview()).lines[0].commission_amount, 150);
@@ -38,7 +38,7 @@ test('unassigned employee gets a zero ledger line instead of legacy payroll fall
       throw new Error(`Unexpected query: ${sql}`);
     }
   };
-  const preview = await calculateCommissionPreview(client, { total_price: 1000, user_id: 7 });
+  const preview = await calculateCommissionPreview(client, { total_price: 1000, user_id: 7, month: '2026-09' });
   assert.equal(preview.lines.length, 1);
   assert.equal(preview.lines[0].commission_amount, 0);
   assert.equal(preview.lines[0].rate_percent, 0);
@@ -59,7 +59,7 @@ test('recalculation selects only current and previous Vietnam months and skips l
       }
       if (sql.includes('SELECT id, status, total_price, user_id, handover_user_id')) {
         assert.equal(params[0], 3);
-        return { rows: [{ id: 3, status: 'completed', total_price: 1000, user_id: 7, handover_user_id: null }] };
+        return { rows: [{ id: 3, status: 'completed', total_price: 1000, user_id: 7, handover_user_id: null, returned_at: '2026-09-15T00:00:00Z' }] };
       }
       if (sql.includes('SELECT COUNT(*)::int AS count')) return { rows: [{ count: 1 }] };
       if (sql.includes('FROM commission_rule_set_users rsu')) return { rows: [{ id: 1, name: 'Sale', rate_percent: 15 }] };
@@ -153,7 +153,7 @@ test('saving a saler rate recalculates assigned users before commit', async () =
   }
 });
 
-test('moving an employee between rule sets recalculates editable months in the same transaction', async () => {
+test('moving a driver between rule sets recalculates editable months in the same transaction', async () => {
   const dbPath = require.resolve('../utils/db');
   const servicePath = require.resolve('../services/commissionService');
   const loggerPath = require.resolve('../utils/logger');
@@ -164,7 +164,7 @@ test('moving an employee between rule sets recalculates editable months in the s
   const client = {
     async query(sql, params) {
       queries.push(sql);
-      if (sql.includes('SELECT id, name, rule_type FROM commission_rule_sets')) return { rows: [{ id: 3, name: '15%', rule_type: 'saler' }] };
+      if (sql.includes('SELECT id, name, rule_type, rate_percent FROM commission_rule_sets')) return { rows: [{ id: 3, name: '5%', rule_type: 'driver', rate_percent: '5' }] };
       if (sql.includes('SELECT id, username FROM users')) return { rows: [{ id: 7, username: 'tung' }] };
       if (sql.includes('SELECT rsu.rule_set_id')) return { rows: [{ rule_set_id: 1, old_rule_set_name: '30%' }] };
       return { rows: [] };
@@ -192,11 +192,11 @@ test('moving an employee between rule sets recalculates editable months in the s
     const response = await fetch(`http://127.0.0.1:${server.address().port}/api/commission-configs/3/users`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: 7, role_name: 'saler' })
+      body: JSON.stringify({ user_id: 7, role_name: 'driver' })
     });
     assert.equal(response.status, 201);
     assert.equal((await response.json()).recalculated_rentals, 1);
-    assert.deepEqual(recalculations.map(({ userIds, roleName }) => ({ userIds, roleName })), [{ userIds: [7], roleName: 'saler' }]);
+    assert.deepEqual(recalculations.map(({ userIds, roleName }) => ({ userIds, roleName })), [{ userIds: [7], roleName: 'driver' }]);
     assert.ok(queries.findIndex(sql => sql.includes('INSERT INTO commission_rule_set_users')) < recalculations[0].queryCount);
     assert.equal(queries.slice(0, recalculations[0].queryCount).includes('COMMIT'), false);
   } finally {

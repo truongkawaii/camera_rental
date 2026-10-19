@@ -105,7 +105,7 @@ const isTieredSaler = async (client, userId) => {
 const getMonthOverride = async (client, userId, month) => {
   const result = await client.query(
     `
-      SELECT id, user_id, month, rate_percent, bonus_amount, notes, updated_at
+      SELECT id, user_id, month, rate_percent, bonus_amount, branch_id, notes, updated_at
       FROM sale_monthly_commission_overrides
       WHERE user_id = $1 AND month = $2 AND is_deleted = false
       LIMIT 1
