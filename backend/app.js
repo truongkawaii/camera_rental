@@ -30,6 +30,7 @@ const collaboratorsRouter = require('./routes/collaborators');
 const saleTransfersRouter = require('./routes/saleTransfers');
 const equipmentTransfersRouter = require('./routes/equipmentTransfers');
 const maintenanceRouter = require('./routes/maintenance');
+const photoboothRouter = require('./routes/photobooth');
 
 
 const app = express();
@@ -109,6 +110,7 @@ app.use('/api/commission-configs', commissionConfigsRouter);
 app.use('/api/collaborators', collaboratorsRouter);
 app.use('/api/sale-transfers', saleTransfersRouter);
 app.use('/api/equipment-transfers', equipmentTransfersRouter);
+app.use('/api/photobooth', photoboothRouter);
 
 
 // Root API endpoint

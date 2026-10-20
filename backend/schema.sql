@@ -462,6 +462,103 @@ CREATE INDEX IF NOT EXISTS idx_entity_images_public_id ON entity_images(public_i
 CREATE UNIQUE INDEX IF NOT EXISTS idx_entity_images_one_primary
   ON entity_images(entity_type, entity_id)
   WHERE is_primary = true AND is_deleted = false;
+
+-- Photobooth workspace. All records and foreign keys are intentionally isolated
+-- from camera rentals, payroll, equipment and their reports.
+CREATE TABLE IF NOT EXISTS pb_services (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(160) NOT NULL,
+  category VARCHAR(20) NOT NULL CHECK (category IN ('shoot', 'print', 'other')),
+  price NUMERIC(12,2) NOT NULL CHECK (price >= 0),
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS pb_gifts (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(160) NOT NULL,
+  sku VARCHAR(80),
+  quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
+  low_stock_threshold INTEGER NOT NULL DEFAULT 5 CHECK (low_stock_threshold >= 0),
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS pb_gift_movements (
+  id BIGSERIAL PRIMARY KEY,
+  gift_id INTEGER NOT NULL REFERENCES pb_gifts(id),
+  delta INTEGER NOT NULL,
+  reason VARCHAR(80) NOT NULL,
+  transaction_id INTEGER,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS pb_assets (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(160) NOT NULL,
+  code VARCHAR(80),
+  kind VARCHAR(80) NOT NULL DEFAULT 'Thiết bị',
+  status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'maintenance', 'offline')),
+  note TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS pb_staff (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(160) NOT NULL,
+  role VARCHAR(100) NOT NULL DEFAULT 'Nhân viên',
+  phone VARCHAR(30),
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS pb_incidents (
+  id SERIAL PRIMARY KEY,
+  asset_id INTEGER NOT NULL REFERENCES pb_assets(id),
+  reported_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  title VARCHAR(240) NOT NULL,
+  description TEXT,
+  status VARCHAR(20) NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'in_progress', 'resolved')),
+  cost NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (cost >= 0),
+  resolution TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS pb_shifts (
+  id SERIAL PRIMARY KEY,
+  work_date DATE NOT NULL,
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL,
+  staff_id INTEGER NOT NULL REFERENCES pb_staff(id),
+  status VARCHAR(20) NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'working', 'done')),
+  note TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS pb_tasks (
+  id SERIAL PRIMARY KEY,
+  work_date DATE NOT NULL,
+  title VARCHAR(240) NOT NULL,
+  staff_id INTEGER REFERENCES pb_staff(id),
+  done BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS pb_transactions (
+  id SERIAL PRIMARY KEY,
+  happened_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  service_id INTEGER NOT NULL REFERENCES pb_services(id),
+  service_name VARCHAR(160) NOT NULL,
+  category VARCHAR(20) NOT NULL,
+  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  unit_price NUMERIC(12,2) NOT NULL CHECK (unit_price >= 0),
+  total_amount NUMERIC(12,2) NOT NULL CHECK (total_amount >= 0),
+  payment_method VARCHAR(20) NOT NULL CHECK (payment_method IN ('cash', 'transfer', 'card')),
+  staff_id INTEGER REFERENCES pb_staff(id),
+  customer_source VARCHAR(30) CHECK (customer_source IN ('walk_in', 'social', 'referral', 'other')),
+  customer_count INTEGER NOT NULL DEFAULT 1 CHECK (customer_count >= 0),
+  gift_id INTEGER REFERENCES pb_gifts(id),
+  gift_quantity INTEGER NOT NULL DEFAULT 0 CHECK (gift_quantity >= 0),
+  note TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_pb_transactions_happened_at ON pb_transactions(happened_at);
+CREATE INDEX IF NOT EXISTS idx_pb_shifts_work_date ON pb_shifts(work_date);
+CREATE INDEX IF NOT EXISTS idx_pb_tasks_work_date ON pb_tasks(work_date);
+CREATE INDEX IF NOT EXISTS idx_pb_gift_movements_gift ON pb_gift_movements(gift_id);
+CREATE INDEX IF NOT EXISTS idx_pb_incidents_asset ON pb_incidents(asset_id, reported_at DESC);
 CREATE INDEX IF NOT EXISTS idx_commission_rule_sets_active ON commission_rule_sets(is_active, effective_from, effective_to) WHERE is_deleted = false;
 CREATE INDEX IF NOT EXISTS idx_collaborator_hierarchy_child_active ON collaborator_hierarchy(child_user_id, is_active) WHERE is_deleted = false;
 CREATE INDEX IF NOT EXISTS idx_collaborator_hierarchy_parent_active ON collaborator_hierarchy(parent_user_id, is_active) WHERE is_deleted = false;

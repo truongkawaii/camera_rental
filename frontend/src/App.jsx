@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
-import { BarChart3, Package, Calendar, Users, LogOut, Menu, X, Activity, ShieldCheck, Store, TrendingUp, Wallet, ChevronDown, Percent, GitBranch, PieChart, Send, Megaphone, Receipt, DollarSign, ArrowRightLeft, FileText, Wrench } from 'lucide-react';
+import { BarChart3, Package, Calendar, Users, LogOut, Menu, X, Activity, ShieldCheck, Store, TrendingUp, Wallet, ChevronDown, Percent, GitBranch, PieChart, Send, Megaphone, Receipt, DollarSign, ArrowRightLeft, FileText, Wrench, Camera } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Dashboard from './pages/Dashboard';
 import DashboardV1 from './pages/DashboardV1';
@@ -12,6 +12,7 @@ import CalendarPage from './pages/Calendar';
 import ActivityLog from './pages/ActivityLog';
 import Branches from './pages/Branches';
 import Performance from './pages/Performance';
+import Photobooth from './pages/Photobooth';
 import Investors from './pages/Investors';
 import UsersPage from './pages/Users';
 import SaleAdminTransfers from './pages/SaleAdminTransfers';
@@ -50,6 +51,11 @@ function AuthGate() {
   }
 
   if (!user) return <Login />;
+
+  // Photobooth is a separate workspace with its own navigation and data scope.
+  if (location.pathname.startsWith('/photobooth')) {
+    return isAdmin ? <Photobooth key={activeRole} /> : <Navigate to="/rentals" replace />;
+  }
 
   return (
     <div className="flex h-[100dvh] bg-gray-100 overflow-x-hidden">
@@ -173,6 +179,7 @@ function AuthGate() {
               items: [
                 { to: '/', icon: <BarChart3 size={18} />, label: 'Dashboard', visible: isAdmin || isCameraManager || isInvestor || isDriver },
                 { to: '/performance', icon: <TrendingUp size={18} />, label: 'Hiệu Suất', visible: true },
+                { to: '/photobooth', icon: <Camera size={18} />, label: 'Photobooth', visible: isAdmin },
               ]
             },
             {
@@ -321,6 +328,7 @@ function AuthGate() {
             <Route path="/commission-configs" element={isAdmin ? <CommissionConfigs key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/collaborators" element={isAdmin ? <CollaboratorHierarchy key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/performance" element={<Performance key={activeRole} />} />
+            <Route path="/photobooth/*" element={isAdmin ? <Photobooth key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/investors" element={(isAdmin || isInvestor) ? <Investors key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/activity"  element={isAdmin ? <ActivityLog key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="*"          element={<Navigate to={(isAdmin || isCameraManager || isInvestor || isDriver) ? "/" : "/rentals"} replace />} />

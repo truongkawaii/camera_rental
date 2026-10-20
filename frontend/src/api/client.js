@@ -13,6 +13,17 @@ const api = axios.create({
   baseURL: API_BASE_URL,
 });
 
+export const photoboothApi = {
+  overview: (date) => api.get('/photobooth/overview', { params: { date } }),
+  reports: (from, to) => api.get('/photobooth/reports', { params: { from, to } }),
+  transactions: (date) => api.get('/photobooth/transactions', { params: { date } }),
+  createTransaction: (data) => api.post('/photobooth/transactions', data),
+  list: (resource) => api.get(`/photobooth/${resource}`),
+  create: (resource, data) => api.post(`/photobooth/${resource}`, data),
+  update: (resource, id, data) => api.patch(`/photobooth/${resource}/${id}`, data),
+  adjustGift: (id, data) => api.post(`/photobooth/gifts/${id}/adjust`, data)
+};
+
 // Add a request interceptor to include the auth token
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
