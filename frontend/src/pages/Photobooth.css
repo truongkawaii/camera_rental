@@ -65,13 +65,6 @@
 .pb-mini-row span{color:#756672;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pb-mini-row b{white-space:nowrap;font-size:11px;color:#4f404d}
 .pb-alert-text{color:#d57a42!important}
-.pb-task-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-.pb-task{display:flex;align-items:center;gap:9px;background:#fdf8fa;border:1px solid #f6edf2;border-radius:10px;padding:10px;font-size:11px}
-.pb-task svg{color:#c9b8c2;flex:none}
-.pb-task svg.pb-done{color:#58b993}
-.pb-task span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pb-task small{margin-left:auto;color:#ac9ba5;white-space:nowrap}
-.pb-strike{text-decoration:line-through;color:#aaa!important}
 .pb-empty{min-height:120px;display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:20px;color:#c3aebc;gap:5px}
 .pb-empty svg{color:#eab2cc}
 .pb-empty strong{font-size:12px;color:#816e7b}
@@ -162,7 +155,6 @@
 .pb-stat{padding:14px}
 .pb-stat strong{font-size:18px}
 .pb-card{padding:16px}
-.pb-task-grid{grid-template-columns:1fr}
 .pb-report-filter{flex-wrap:wrap}
 .pb-form{grid-template-columns:1fr}
 .pb-form-actions{grid-column:1}

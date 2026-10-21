@@ -2,7 +2,7 @@
 
 ## Mục tiêu và phạm vi
 
-Ảnh và file HTML `Insphoto_Quan_Ly_Web_Co_Bao_Cao_Tai_Chinh.html` mô tả một không gian vận hành Photobooth gồm tổng quan theo ngày, thu tiền khách, nhân viên/ca làm, tiền tại quầy, khách hàng/marketing, báo cáo doanh thu và báo cáo tài chính. Mục Photobooth nằm ngay dưới **Hiệu Suất** trên sidebar chính. Khi vào mục này, người được cấp quyền chuyển sang một workspace có điều hướng riêng và đường quay lại SnapPro. Các mục thiết bị/phụ kiện và sự cố/bảo trì đã được gỡ khỏi giao diện theo quy trình cửa hàng; dữ liệu cũ được giữ lại.
+Ảnh và file HTML `Insphoto_Quan_Ly_Web_Co_Bao_Cao_Tai_Chinh.html` mô tả một không gian vận hành Photobooth gồm tổng quan theo ngày, thu tiền khách, nhân viên/ca làm, tiền tại quầy, khách hàng/marketing, báo cáo doanh thu và báo cáo tài chính. Mục Photobooth nằm ngay dưới **Hiệu Suất** trên sidebar chính. Khi vào mục này, người được cấp quyền chuyển sang một workspace có điều hướng riêng và đường quay lại SnapPro. Các mục thiết bị/phụ kiện, sự cố/bảo trì và việc cần làm đã được gỡ khỏi giao diện theo quy trình cửa hàng; dữ liệu cũ được giữ lại.
 
 ## Nguyên tắc dữ liệu
 
@@ -23,7 +23,7 @@
 
 1. Thiết lập danh mục dịch vụ, giá, nhân viên và quà tặng.
 2. Nhập số tồn quà ban đầu qua thao tác **Nhập / xuất**; mọi lần điều chỉnh có lý do và lịch sử.
-3. Xếp ca, giao việc cho nhân viên.
+3. Xếp ca cho nhân viên.
 4. Ghi đơn: chọn dịch vụ, số lượng, đơn giá, giảm giá, tiền mặt/chuyển khoản, khách, nhân viên, ca và quà nếu có. Máy chủ kiểm tra đủ tiền và tính thành tiền, tiền thối, tiền mặt vào két.
 5. Ghi tiền đầu ca, khoản thu/chi hoặc đổi mệnh giá; chốt quỹ theo số tiền đếm thực tế.
 6. Ghi chi phí Photobooth theo nhóm phát sinh, ADS, mặt bằng hoặc lương gắn với nhân viên Photobooth; xem lợi nhuận theo ngày/tháng.
