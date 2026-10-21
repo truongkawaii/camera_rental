@@ -559,6 +559,64 @@ CREATE INDEX IF NOT EXISTS idx_pb_shifts_work_date ON pb_shifts(work_date);
 CREATE INDEX IF NOT EXISTS idx_pb_tasks_work_date ON pb_tasks(work_date);
 CREATE INDEX IF NOT EXISTS idx_pb_gift_movements_gift ON pb_gift_movements(gift_id);
 CREATE INDEX IF NOT EXISTS idx_pb_incidents_asset ON pb_incidents(asset_id, reported_at DESC);
+
+-- Insphoto order and finance workflow. Existing Photobooth sales remain valid;
+-- columns are added without touching camera-rental tables.
+ALTER TABLE pb_transactions ADD COLUMN IF NOT EXISTS sale_date DATE;
+ALTER TABLE pb_transactions ADD COLUMN IF NOT EXISTS customer_name VARCHAR(160);
+ALTER TABLE pb_transactions ADD COLUMN IF NOT EXISTS customer_phone VARCHAR(30);
+ALTER TABLE pb_transactions ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(12,2) NOT NULL DEFAULT 0;
+ALTER TABLE pb_transactions ADD COLUMN IF NOT EXISTS cash_received NUMERIC(12,2) NOT NULL DEFAULT 0;
+ALTER TABLE pb_transactions ADD COLUMN IF NOT EXISTS transfer_received NUMERIC(12,2) NOT NULL DEFAULT 0;
+ALTER TABLE pb_transactions ADD COLUMN IF NOT EXISTS cash_in_drawer NUMERIC(12,2) NOT NULL DEFAULT 0;
+ALTER TABLE pb_transactions ADD COLUMN IF NOT EXISTS change_amount NUMERIC(12,2) NOT NULL DEFAULT 0;
+ALTER TABLE pb_transactions ADD COLUMN IF NOT EXISTS shift_label VARCHAR(40);
+ALTER TABLE pb_transactions ADD COLUMN IF NOT EXISTS marketing_consent BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE pb_transactions ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'completed';
+ALTER TABLE pb_transactions ADD COLUMN IF NOT EXISTS void_reason TEXT;
+ALTER TABLE pb_transactions ADD COLUMN IF NOT EXISTS voided_at TIMESTAMPTZ;
+UPDATE pb_transactions SET sale_date=(happened_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date WHERE sale_date IS NULL;
+UPDATE pb_transactions SET cash_received=total_amount, cash_in_drawer=total_amount WHERE payment_method='cash' AND cash_received=0 AND transfer_received=0;
+UPDATE pb_transactions SET transfer_received=total_amount WHERE payment_method='transfer' AND cash_received=0 AND transfer_received=0;
+ALTER TABLE pb_transactions DROP CONSTRAINT IF EXISTS pb_transactions_payment_method_check;
+ALTER TABLE pb_transactions ADD CONSTRAINT pb_transactions_payment_method_check CHECK (payment_method IN ('cash','transfer','card','mixed'));
+CREATE INDEX IF NOT EXISTS idx_pb_transactions_sale_date ON pb_transactions(sale_date, status);
+CREATE INDEX IF NOT EXISTS idx_pb_transactions_phone ON pb_transactions(customer_phone) WHERE customer_phone IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS pb_cash_movements (
+  id SERIAL PRIMARY KEY,
+  movement_date DATE NOT NULL,
+  type VARCHAR(20) NOT NULL CHECK (type IN ('opening','in','out','exchange')),
+  amount NUMERIC(12,2) NOT NULL CHECK (amount >= 0),
+  staff_id INTEGER REFERENCES pb_staff(id),
+  note TEXT,
+  voided_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_pb_cash_movements_date ON pb_cash_movements(movement_date);
+CREATE TABLE IF NOT EXISTS pb_cash_closures (
+  id SERIAL PRIMARY KEY,
+  close_date DATE NOT NULL,
+  expected_amount NUMERIC(12,2) NOT NULL,
+  actual_amount NUMERIC(12,2) NOT NULL CHECK (actual_amount >= 0),
+  difference_amount NUMERIC(12,2) NOT NULL,
+  staff_id INTEGER REFERENCES pb_staff(id),
+  note TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_pb_cash_closures_date ON pb_cash_closures(close_date);
+CREATE TABLE IF NOT EXISTS pb_expenses (
+  id SERIAL PRIMARY KEY,
+  expense_date DATE NOT NULL,
+  category VARCHAR(20) NOT NULL CHECK (category IN ('other','ads','rent')),
+  amount NUMERIC(12,2) NOT NULL CHECK (amount > 0),
+  note TEXT NOT NULL,
+  payment_method VARCHAR(20) NOT NULL CHECK (payment_method IN ('cash','transfer')),
+  recorded_by VARCHAR(160),
+  voided_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_pb_expenses_date ON pb_expenses(expense_date);
 CREATE INDEX IF NOT EXISTS idx_commission_rule_sets_active ON commission_rule_sets(is_active, effective_from, effective_to) WHERE is_deleted = false;
 CREATE INDEX IF NOT EXISTS idx_collaborator_hierarchy_child_active ON collaborator_hierarchy(child_user_id, is_active) WHERE is_deleted = false;
 CREATE INDEX IF NOT EXISTS idx_collaborator_hierarchy_parent_active ON collaborator_hierarchy(parent_user_id, is_active) WHERE is_deleted = false;

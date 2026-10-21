@@ -29,7 +29,7 @@ test('Photobooth API only allows admins', async () => {
   });
 });
 
-test('sale takes current service price, snapshots it, and moves gift stock atomically', async () => {
+test('sale snapshots the selected unit price and moves gift stock atomically', async () => {
   const originalConnect = pool.connect;
   const queries = [];
   pool.connect = async () => ({
@@ -48,14 +48,16 @@ test('sale takes current service price, snapshots it, and moves gift stock atomi
       const response = await fetch(`${base}/api/photobooth/transactions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token('admin')}` },
-        body: JSON.stringify({ service_id: 7, quantity: 2, payment_method: 'cash', unit_price: 1, total_amount: 2, gift_id: 3, gift_quantity: 1 })
+        body: JSON.stringify({ service_id: 7, quantity: 2, payment_method: 'cash', unit_price: 35000, total_amount: 2, gift_id: 3, gift_quantity: 1 })
       });
       assert.equal(response.status, 201);
       assert.equal((await response.json()).total_amount, '70000');
     });
     const insert = queries.find(item => item.sql.startsWith('INSERT INTO pb_transactions'));
-    assert.equal(insert.values[4], '35000');
+    assert.equal(insert.values[4], 35000);
     assert.equal(insert.values[5], 70000);
+    assert.equal(insert.values[17], 70000);
+    assert.equal(insert.values[19], 70000);
     assert.ok(queries.some(item => item.sql.startsWith('UPDATE pb_gifts')));
     assert.ok(queries.some(item => item.sql.startsWith('INSERT INTO pb_gift_movements')));
     assert.equal(queries.at(-1).sql, 'COMMIT');
@@ -86,5 +88,35 @@ test('insufficient gifts rolls back the sale without inserting revenue', async (
     });
     assert.equal(queries.at(-1), 'ROLLBACK');
     assert.ok(!queries.some(sql => sql.startsWith('INSERT INTO pb_transactions')));
+  } finally { pool.connect = originalConnect; }
+});
+
+test('split payment and discount reconcile cash without treating change as revenue', async () => {
+  const originalConnect = pool.connect;
+  let inserted;
+  pool.connect = async () => ({
+    query: async (sql, values = []) => {
+      if (sql.startsWith('SELECT * FROM pb_services')) return { rows: [{ id: 7, name: 'Chụp ảnh', category: 'shoot', price: '35000' }] };
+      if (sql.startsWith('INSERT INTO pb_transactions')) { inserted = values; return { rows: [{ id: 92, total_amount: '60000' }] }; }
+      return { rowCount: 1, rows: [] };
+    },
+    release: () => {}
+  });
+  try {
+    await withServer(async base => {
+      const response = await fetch(`${base}/api/photobooth/transactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token('admin')}` },
+        body: JSON.stringify({ service_id: 7, quantity: 2, unit_price: 35000, discount_amount: 10000, cash_received: 50000, transfer_received: 30000, sale_date: '2026-10-21', customer_name: 'Minh', customer_phone: '0912345678', marketing_consent: true })
+      });
+      assert.equal(response.status, 201);
+    });
+    assert.equal(inserted[5], 60000);
+    assert.equal(inserted[6], 'mixed');
+    assert.equal(inserted[17], 50000);
+    assert.equal(inserted[18], 30000);
+    assert.equal(inserted[19], 30000);
+    assert.equal(inserted[20], 20000);
+    assert.equal(inserted[22], true);
   } finally { pool.connect = originalConnect; }
 });

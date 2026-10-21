@@ -6,9 +6,10 @@ const router = express.Router();
 router.use(authenticate, requireAdmin);
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-const validDate = (value) => typeof value === 'string' && datePattern.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
+const validDate = (value) => typeof value === 'string' && datePattern.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 const positiveId = (value) => Number.isSafeInteger(Number(value)) && Number(value) > 0;
 const nonNegative = (value) => Number.isFinite(Number(value)) && Number(value) >= 0;
+const wholeMoney = (value) => Number.isSafeInteger(Number(value)) && Number(value) >= 0;
 const clean = (value, max = 160) => typeof value === 'string' ? value.trim().slice(0, max) : '';
 const fail = (res, message) => res.status(400).json({ error: message });
 const run = (handler) => async (req, res, next) => {
@@ -61,19 +62,19 @@ router.get('/overview', run(async (req, res) => {
   const date = validDate(req.query.date) ? req.query.date : new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const day = await pool.query(`SELECT COALESCE(SUM(total_amount),0)::float AS revenue, COALESCE(SUM(customer_count),0)::int AS customers,
       COALESCE(SUM(CASE WHEN category='shoot' THEN quantity ELSE 0 END),0)::int AS shoots,
-      COALESCE(SUM(gift_quantity),0)::int AS gifts, COUNT(*)::int AS transactions
-    FROM pb_transactions WHERE (happened_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = $1::date`, [date]);
+      COALESCE(SUM(gift_quantity),0)::int AS gifts, COALESCE(SUM(cash_in_drawer),0)::float AS cash_sales, COUNT(*)::int AS transactions
+    FROM pb_transactions WHERE sale_date = $1::date AND status='completed'`, [date]);
   const [recent, shifts, tasks, services, gifts, assets, incidents, trend, mix, channels] = await Promise.all([
-    pool.query(`SELECT t.*, s.name AS staff_name, g.name AS gift_name FROM pb_transactions t LEFT JOIN pb_staff s ON s.id=t.staff_id LEFT JOIN pb_gifts g ON g.id=t.gift_id WHERE (t.happened_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date=$1::date ORDER BY t.happened_at DESC, t.id DESC LIMIT 12`, [date]),
-    pool.query(`SELECT sh.*, st.name AS staff_name FROM pb_shifts sh JOIN pb_staff st ON st.id=sh.staff_id WHERE sh.work_date=$1::date ORDER BY sh.start_time`, [date]),
-    pool.query(`SELECT t.*, s.name AS staff_name FROM pb_tasks t LEFT JOIN pb_staff s ON s.id=t.staff_id WHERE t.work_date=$1::date ORDER BY t.done, t.id`, [date]),
+    pool.query(`SELECT t.*,t.sale_date::text AS sale_date, s.name AS staff_name, g.name AS gift_name FROM pb_transactions t LEFT JOIN pb_staff s ON s.id=t.staff_id LEFT JOIN pb_gifts g ON g.id=t.gift_id WHERE t.sale_date=$1::date AND t.status='completed' ORDER BY t.happened_at DESC, t.id DESC LIMIT 12`, [date]),
+    pool.query(`SELECT sh.*,sh.work_date::text AS work_date, st.name AS staff_name FROM pb_shifts sh JOIN pb_staff st ON st.id=sh.staff_id WHERE sh.work_date=$1::date ORDER BY sh.start_time`, [date]),
+    pool.query(`SELECT t.*,t.work_date::text AS work_date, s.name AS staff_name FROM pb_tasks t LEFT JOIN pb_staff s ON s.id=t.staff_id WHERE t.work_date=$1::date ORDER BY t.done, t.id`, [date]),
     pool.query('SELECT * FROM pb_services WHERE active=true ORDER BY name'),
     pool.query('SELECT * FROM pb_gifts WHERE active=true ORDER BY name'),
     pool.query('SELECT * FROM pb_assets ORDER BY name'),
     pool.query(`SELECT i.*, a.name AS asset_name FROM pb_incidents i JOIN pb_assets a ON a.id=i.asset_id WHERE i.status<>'resolved' ORDER BY i.reported_at DESC LIMIT 5`),
-    pool.query(`SELECT d::date AS day, COALESCE(SUM(t.total_amount),0)::float AS revenue FROM generate_series($1::date - interval '6 days',$1::date,interval '1 day') d LEFT JOIN pb_transactions t ON (t.happened_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date=d::date GROUP BY d ORDER BY d`, [date]),
-    pool.query(`SELECT category, COALESCE(SUM(total_amount),0)::float AS revenue FROM pb_transactions WHERE (happened_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date=$1::date GROUP BY category ORDER BY revenue DESC`, [date]),
-    pool.query(`SELECT customer_source, COUNT(*)::int AS count FROM pb_transactions WHERE (happened_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date=$1::date AND customer_source IS NOT NULL GROUP BY customer_source`, [date])
+    pool.query(`SELECT d::date::text AS day, COALESCE(SUM(t.total_amount),0)::float AS revenue FROM generate_series($1::date - interval '6 days',$1::date,interval '1 day') d LEFT JOIN pb_transactions t ON t.sale_date=d::date AND t.status='completed' GROUP BY d ORDER BY d`, [date]),
+    pool.query(`SELECT category, COALESCE(SUM(total_amount),0)::float AS revenue FROM pb_transactions WHERE sale_date=$1::date AND status='completed' GROUP BY category ORDER BY revenue DESC`, [date]),
+    pool.query(`SELECT customer_source, COUNT(*)::int AS count FROM pb_transactions WHERE sale_date=$1::date AND status='completed' AND customer_source IS NOT NULL GROUP BY customer_source`, [date])
   ]);
   res.json({ date, metrics: day.rows[0], recent: recent.rows, shifts: shifts.rows, tasks: tasks.rows, services: services.rows, gifts: gifts.rows, assets: assets.rows, incidents: incidents.rows, trend: trend.rows, mix: mix.rows, channels: channels.rows });
 }));
@@ -82,26 +83,33 @@ router.get('/reports', run(async (req, res) => {
   const { from, to } = req.query;
   if (!validDate(from) || !validDate(to) || from > to) return fail(res, 'Khoảng ngày không hợp lệ.');
   const [daily, services, payments] = await Promise.all([
-    pool.query(`SELECT (happened_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date AS day, COUNT(*)::int AS transactions, COALESCE(SUM(customer_count),0)::int AS customers, SUM(total_amount)::float AS revenue FROM pb_transactions WHERE (happened_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN $1::date AND $2::date GROUP BY 1 ORDER BY 1`, [from, to]),
-    pool.query(`SELECT service_name, category, COALESCE(SUM(quantity),0)::int AS quantity, SUM(total_amount)::float AS revenue FROM pb_transactions WHERE (happened_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN $1::date AND $2::date GROUP BY service_name,category ORDER BY revenue DESC`, [from, to]),
-    pool.query(`SELECT payment_method, COUNT(*)::int AS transactions, SUM(total_amount)::float AS revenue FROM pb_transactions WHERE (happened_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN $1::date AND $2::date GROUP BY payment_method`, [from, to])
+    pool.query(`SELECT sale_date::text AS day, COUNT(*)::int AS transactions, COALESCE(SUM(customer_count),0)::int AS customers, SUM(total_amount)::float AS revenue, SUM(cash_in_drawer)::float AS cash, SUM(transfer_received)::float AS transfer FROM pb_transactions WHERE sale_date BETWEEN $1::date AND $2::date AND status='completed' GROUP BY sale_date ORDER BY sale_date`, [from, to]),
+    pool.query(`SELECT service_name, category, COALESCE(SUM(quantity),0)::int AS quantity, SUM(total_amount)::float AS revenue FROM pb_transactions WHERE sale_date BETWEEN $1::date AND $2::date AND status='completed' GROUP BY service_name,category ORDER BY revenue DESC`, [from, to]),
+    pool.query(`SELECT payment_method, COUNT(*)::int AS transactions, SUM(total_amount)::float AS revenue FROM pb_transactions WHERE sale_date BETWEEN $1::date AND $2::date AND status='completed' GROUP BY payment_method`, [from, to])
   ]);
   res.json({ daily: daily.rows, services: services.rows, payments: payments.rows });
 }));
 
 router.get('/transactions', run(async (req, res) => {
-  const date = req.query.date;
+  const { date, from, to } = req.query;
   if (date && !validDate(date)) return fail(res, 'Ngày không hợp lệ.');
-  const result = await pool.query(`SELECT t.*, s.name AS staff_name, g.name AS gift_name FROM pb_transactions t LEFT JOIN pb_staff s ON s.id=t.staff_id LEFT JOIN pb_gifts g ON g.id=t.gift_id ${date ? "WHERE (t.happened_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date=$1::date" : ''} ORDER BY t.happened_at DESC,t.id DESC LIMIT 200`, date ? [date] : []);
+  if ((from || to) && (!validDate(from) || !validDate(to) || from > to)) return fail(res, 'Khoảng ngày không hợp lệ.');
+  const where = date ? 'WHERE t.sale_date=$1::date' : from ? 'WHERE t.sale_date BETWEEN $1::date AND $2::date' : '';
+  const values = date ? [date] : from ? [from, to] : [];
+  const result = await pool.query(`SELECT t.*,t.sale_date::text AS sale_date, s.name AS staff_name, g.name AS gift_name FROM pb_transactions t LEFT JOIN pb_staff s ON s.id=t.staff_id LEFT JOIN pb_gifts g ON g.id=t.gift_id ${where} ORDER BY t.sale_date DESC,t.happened_at DESC,t.id DESC LIMIT 5000`, values);
   res.json(result.rows);
 }));
 
 router.post('/transactions', run(async (req, res) => {
   const body = req.body || {};
-  if (!positiveId(body.service_id) || !Number.isInteger(Number(body.quantity)) || Number(body.quantity) <= 0 || !['cash', 'transfer', 'card'].includes(body.payment_method)) return fail(res, 'Dịch vụ, số lượng hoặc thanh toán không hợp lệ.');
+  if (!positiveId(body.service_id) || !Number.isInteger(Number(body.quantity)) || Number(body.quantity) <= 0) return fail(res, 'Dịch vụ hoặc số lượng không hợp lệ.');
+  const saleDate = body.sale_date || new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  if (!validDate(saleDate)) return fail(res, 'Ngày đơn hàng không hợp lệ.');
   if (body.customer_count != null && (!Number.isInteger(Number(body.customer_count)) || Number(body.customer_count) < 0)) return fail(res, 'Số khách không hợp lệ.');
   if (body.customer_source && !['walk_in', 'social', 'referral', 'other'].includes(body.customer_source)) return fail(res, 'Nguồn khách không hợp lệ.');
   if (body.staff_id && !positiveId(body.staff_id)) return fail(res, 'Nhân viên không hợp lệ.');
+  if (body.marketing_consent != null && typeof body.marketing_consent !== 'boolean') return fail(res, 'Đồng ý marketing không hợp lệ.');
+  if (body.customer_phone && !/^[0-9+().\s-]{8,30}$/.test(body.customer_phone)) return fail(res, 'Số điện thoại không hợp lệ.');
   const giftQuantity = Number(body.gift_quantity || 0);
   if (!Number.isInteger(giftQuantity) || giftQuantity < 0 || (giftQuantity > 0 && !positiveId(body.gift_id))) return fail(res, 'Số quà không hợp lệ.');
   const client = await pool.connect();
@@ -109,17 +117,48 @@ router.post('/transactions', run(async (req, res) => {
     await client.query('BEGIN');
     const service = (await client.query('SELECT * FROM pb_services WHERE id=$1 AND active=true', [body.service_id])).rows[0];
     if (!service) { await client.query('ROLLBACK'); return fail(res, 'Dịch vụ không tồn tại hoặc đã ngừng bán.'); }
+    const unitPrice = body.unit_price == null ? Number(service.price) : Number(body.unit_price);
+    const discount = Number(body.discount_amount ?? 0);
+    const subtotal = unitPrice * Number(body.quantity);
+    if (!wholeMoney(unitPrice) || !wholeMoney(discount) || !Number.isSafeInteger(subtotal) || discount > subtotal) { await client.query('ROLLBACK'); return fail(res, 'Đơn giá hoặc giảm giá không hợp lệ.'); }
+    const total = subtotal - discount;
+    // Legacy callers may still send a single payment_method. New orders use
+    // explicit cash and transfer amounts so drawer reconciliation is exact.
+    const cash = body.cash_received == null && body.transfer_received == null && body.payment_method === 'cash' ? total : Number(body.cash_received ?? 0);
+    const transfer = body.cash_received == null && body.transfer_received == null && body.payment_method === 'transfer' ? total : Number(body.transfer_received ?? 0);
+    const legacyCard = body.cash_received == null && body.transfer_received == null && body.payment_method === 'card';
+    if (!wholeMoney(cash) || !wholeMoney(transfer) || transfer > total || (!legacyCard && cash + transfer < total)) { await client.query('ROLLBACK'); return fail(res, 'Khách chưa thanh toán đủ hoặc số tiền nhập không hợp lệ.'); }
+    const change = legacyCard ? 0 : cash + transfer - total;
+    const cashInDrawer = cash - change;
+    const paymentMethod = legacyCard ? 'card' : cashInDrawer > 0 && transfer > 0 ? 'mixed' : transfer > 0 ? 'transfer' : 'cash';
     if (body.staff_id && !(await client.query('SELECT 1 FROM pb_staff WHERE id=$1 AND active=true', [body.staff_id])).rowCount) { await client.query('ROLLBACK'); return fail(res, 'Nhân viên không hợp lệ.'); }
     if (giftQuantity > 0) {
       const updated = await client.query('UPDATE pb_gifts SET quantity=quantity-$1 WHERE id=$2 AND active=true AND quantity >= $1 RETURNING id', [giftQuantity, body.gift_id]);
       if (!updated.rowCount) { await client.query('ROLLBACK'); return fail(res, 'Quà tặng không đủ tồn kho.'); }
     }
-    const result = await client.query(`INSERT INTO pb_transactions(service_id,service_name,category,quantity,unit_price,total_amount,payment_method,staff_id,customer_source,customer_count,gift_id,gift_quantity,note)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-      [service.id, service.name, service.category, Number(body.quantity), service.price, Number(service.price) * Number(body.quantity), body.payment_method, body.staff_id || null, body.customer_source || null, Number(body.customer_count ?? 1), giftQuantity ? body.gift_id : null, giftQuantity, clean(body.note, 1000) || null]);
+    const result = await client.query(`INSERT INTO pb_transactions(service_id,service_name,category,quantity,unit_price,total_amount,payment_method,staff_id,customer_source,customer_count,gift_id,gift_quantity,note,sale_date,customer_name,customer_phone,discount_amount,cash_received,transfer_received,cash_in_drawer,change_amount,shift_label,marketing_consent)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) RETURNING *`,
+      [service.id, service.name, service.category, Number(body.quantity), unitPrice, total, paymentMethod, body.staff_id || null, body.customer_source || null, Number(body.customer_count ?? 1), giftQuantity ? body.gift_id : null, giftQuantity, clean(body.note, 1000) || null, saleDate, clean(body.customer_name) || 'Khách lẻ', clean(body.customer_phone, 30) || null, discount, cash, transfer, cashInDrawer, change, clean(body.shift_label, 40) || null, Boolean(body.marketing_consent)]);
     if (giftQuantity) await client.query('INSERT INTO pb_gift_movements(gift_id,delta,reason,transaction_id) VALUES($1,$2,$3,$4)', [body.gift_id, -giftQuantity, 'Tặng khách', result.rows[0].id]);
     await client.query('COMMIT');
     res.status(201).json(result.rows[0]);
+  } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+}));
+
+router.post('/transactions/:id/void', run(async (req, res) => {
+  if (!positiveId(req.params.id) || !clean(req.body?.reason, 500)) return fail(res, 'Vui lòng nhập lý do hủy đơn.');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await client.query("UPDATE pb_transactions SET status='voided',void_reason=$2,voided_at=NOW() WHERE id=$1 AND status='completed' RETURNING *", [req.params.id, clean(req.body.reason, 500)]);
+    if (!result.rowCount) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Không tìm thấy đơn đang hoạt động.' }); }
+    const sale = result.rows[0];
+    if (sale.gift_id && sale.gift_quantity > 0) {
+      await client.query('UPDATE pb_gifts SET quantity=quantity+$1 WHERE id=$2', [sale.gift_quantity, sale.gift_id]);
+      await client.query('INSERT INTO pb_gift_movements(gift_id,delta,reason,transaction_id) VALUES($1,$2,$3,$4)', [sale.gift_id, sale.gift_quantity, 'Hoàn quà do hủy đơn', sale.id]);
+    }
+    await client.query('COMMIT');
+    res.json(sale);
   } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
 }));
 
@@ -129,7 +168,8 @@ router.get('/:resource', run(async (req, res) => {
   const staffJoin = ['shifts', 'tasks'].includes(req.params.resource);
   const assetJoin = req.params.resource === 'incidents';
   const join = staffJoin ? ' LEFT JOIN pb_staff staff ON staff.id=base.staff_id' : assetJoin ? ' LEFT JOIN pb_assets asset ON asset.id=base.asset_id' : '';
-  const select = staffJoin ? 'base.*, staff.name AS staff_name' : assetJoin ? 'base.*, asset.name AS asset_name' : 'base.*';
+  const dateColumn = ['shifts', 'tasks'].includes(req.params.resource) ? ',base.work_date::text AS work_date' : '';
+  const select = staffJoin ? `base.*${dateColumn}, staff.name AS staff_name` : assetJoin ? 'base.*, asset.name AS asset_name' : 'base.*';
   const result = await pool.query(`SELECT ${select} FROM ${config.table} base${join} ORDER BY ${config.order.split(',').map(part => `base.${part.trim()}`).join(', ')} LIMIT 500`);
   res.json(result.rows);
 }));
