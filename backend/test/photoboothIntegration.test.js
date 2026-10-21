@@ -55,6 +55,11 @@ test('Photobooth order, drawer and finance stay separate from camera rentals', {
     assert.equal(backup.data.pb_transactions[0].sale_date, '2026-10-21');
     await call('/restore', 'POST', backup);
     assert.equal((await call('/transactions?date=2026-10-21')).length, backup.data.pb_transactions.length);
+    const invalid = structuredClone(backup);
+    invalid.data.pb_services[0].unknown_column = 'invalid';
+    const rejected = await fetch(`${base}/restore`, { method: 'POST', headers: { Authorization: authorization, 'Content-Type': 'application/json' }, body: JSON.stringify(invalid) });
+    assert.equal(rejected.status, 400);
+    assert.equal((await call('/transactions?date=2026-10-21')).length, backup.data.pb_transactions.length);
     assert.equal((await pool.query('SELECT count(*)::int AS count FROM rentals')).rows[0].count, before);
   } finally {
     await new Promise(resolve => server.close(resolve));

@@ -162,7 +162,7 @@ router.post('/restore', run(async (req, res) => {
     for (const table of backupTables) {
       const seen = new Set();
       for (const row of snapshot.data[table]) {
-        if (!row || typeof row !== 'object' || !idOK(row.id) || seen.has(row.id) || Object.keys(row).some(key => !columns[table].has(key))) throw new Error(`Bản ghi trong ${table} không hợp lệ.`);
+        if (!row || typeof row !== 'object' || !idOK(row.id) || seen.has(row.id) || Object.keys(row).some(key => !columns[table].has(key))) throw Object.assign(new Error(`Bản ghi trong ${table} không hợp lệ.`), { status: 400 });
         seen.add(row.id);
         const keys = Object.keys(row);
         await client.query(`INSERT INTO ${table} (${keys.join(',')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(',')})`, keys.map(key => (backupDateColumns[table] || []).includes(key) && row[key] != null ? vietnamDate(row[key]) : row[key]));
@@ -173,7 +173,11 @@ router.post('/restore', run(async (req, res) => {
     }
     await client.query('COMMIT');
     res.json({ restored: Object.fromEntries(backupTables.map(table => [table, snapshot.data[table].length])) });
-  } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+  } catch (error) {
+    await client.query('ROLLBACK');
+    if (error.status === 400) return res.status(400).json({ error: error.message });
+    throw error;
+  } finally { client.release(); }
 }));
 
 module.exports = router;
