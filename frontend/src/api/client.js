@@ -36,6 +36,8 @@ export const photoboothApi = {
   update: (resource, id, data) => api.patch(`/photobooth/${resource}/${id}`, data),
   adjustGift: (id, data) => api.post(`/photobooth/gifts/${id}/adjust`, data)
 };
+export const getPhotoboothAccess = () => api.get('/photobooth-access');
+export const setPhotoboothAccess = (id, allowed) => api.put(`/photobooth-access/${id}`, { allowed });
 
 // Add a request interceptor to include the auth token
 api.interceptors.request.use((config) => {

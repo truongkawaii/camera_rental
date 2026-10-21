@@ -1,9 +1,10 @@
 const express = require('express');
 const { pool } = require('../utils/db');
 const { authenticate, requireAdmin } = require('../middleware/auth');
+const { requirePhotoboothAccess } = require('../middleware/photoboothAccess');
 
 const router = express.Router();
-router.use(authenticate, requireAdmin);
+router.use(authenticate, requirePhotoboothAccess);
 const dateOK = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 const monthOK = value => typeof value === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
 const moneyOK = value => Number.isSafeInteger(Number(value)) && Number(value) >= 0;
@@ -78,14 +79,19 @@ router.get('/customers', run(async (_req, res) => {
 
 router.get('/expenses', run(async (req, res) => {
   if (!monthOK(req.query.month)) return fail(res, 'Tháng không hợp lệ.');
-  const result = await pool.query("SELECT *,expense_date::text AS expense_date FROM pb_expenses WHERE to_char(expense_date,'YYYY-MM')=$1 AND voided_at IS NULL ORDER BY expense_date DESC,id DESC", [req.query.month]);
+  const result = await pool.query("SELECT e.*,e.expense_date::text AS expense_date,s.name AS staff_name FROM pb_expenses e LEFT JOIN pb_staff s ON s.id=e.staff_id WHERE to_char(e.expense_date,'YYYY-MM')=$1 AND e.voided_at IS NULL ORDER BY e.expense_date DESC,e.id DESC", [req.query.month]);
   res.json(result.rows);
 }));
 
 router.post('/expenses', run(async (req, res) => {
   const b = req.body || {};
-  if (!dateOK(b.expense_date) || !['other', 'ads', 'rent'].includes(b.category) || !moneyOK(b.amount) || Number(b.amount) <= 0 || !short(b.note, 1000) || !['cash', 'transfer'].includes(b.payment_method)) return fail(res, 'Thông tin khoản chi không hợp lệ.');
-  const result = await pool.query('INSERT INTO pb_expenses(expense_date,category,amount,note,payment_method,recorded_by) VALUES($1,$2,$3,$4,$5,$6) RETURNING *', [b.expense_date, b.category, Number(b.amount), short(b.note, 1000), b.payment_method, short(b.recorded_by) || null]);
+  if (!dateOK(b.expense_date) || !['other', 'ads', 'rent', 'salary'].includes(b.category) || !moneyOK(b.amount) || Number(b.amount) <= 0 || !short(b.note, 1000) || !['cash', 'transfer'].includes(b.payment_method)) return fail(res, 'Thông tin khoản chi không hợp lệ.');
+  if (b.category === 'salary') {
+    if (!idOK(b.staff_id)) return fail(res, 'Vui lòng chọn nhân viên Photobooth.');
+    const staff = await pool.query('SELECT id FROM pb_staff WHERE id=$1', [b.staff_id]);
+    if (!staff.rowCount) return fail(res, 'Nhân viên Photobooth không tồn tại.');
+  }
+  const result = await pool.query('INSERT INTO pb_expenses(expense_date,category,staff_id,amount,note,payment_method,recorded_by) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *', [b.expense_date, b.category, b.category === 'salary' ? b.staff_id : null, Number(b.amount), short(b.note, 1000), b.payment_method, short(b.recorded_by) || null]);
   res.status(201).json(result.rows[0]);
 }));
 
@@ -109,14 +115,14 @@ router.get('/finance', run(async (req, res) => {
   ]);
   const byDay = new Map();
   const dayKey = vietnamDate;
-  for (const row of sales.rows) byDay.set(dayKey(row.day), { day: row.day, revenue: Number(row.revenue), cash: Number(row.cash), transfer: Number(row.transfer), orders: row.orders, other: 0, ads: 0, rent: 0 });
+  for (const row of sales.rows) byDay.set(dayKey(row.day), { day: row.day, revenue: Number(row.revenue), cash: Number(row.cash), transfer: Number(row.transfer), orders: row.orders, other: 0, ads: 0, rent: 0, salary: 0 });
   for (const row of expenses.rows) {
     const key = dayKey(row.day);
-    if (!byDay.has(key)) byDay.set(key, { day: row.day, revenue: 0, cash: 0, transfer: 0, orders: 0, other: 0, ads: 0, rent: 0 });
+    if (!byDay.has(key)) byDay.set(key, { day: row.day, revenue: 0, cash: 0, transfer: 0, orders: 0, other: 0, ads: 0, rent: 0, salary: 0 });
     byDay.get(key)[row.category] += Number(row.amount);
   }
-  const daily = [...byDay.values()].map(row => ({ ...row, expense: row.other + row.ads + row.rent, profit: row.revenue - row.other - row.ads - row.rent })).sort((a, b) => dayKey(b.day).localeCompare(dayKey(a.day)));
-  const totals = daily.reduce((sum, row) => { for (const key of ['revenue', 'cash', 'transfer', 'orders', 'other', 'ads', 'rent', 'expense', 'profit']) sum[key] += Number(row[key]); return sum; }, { revenue: 0, cash: 0, transfer: 0, orders: 0, other: 0, ads: 0, rent: 0, expense: 0, profit: 0 });
+  const daily = [...byDay.values()].map(row => ({ ...row, expense: row.other + row.ads + row.rent + row.salary, profit: row.revenue - row.other - row.ads - row.rent - row.salary })).sort((a, b) => dayKey(b.day).localeCompare(dayKey(a.day)));
+  const totals = daily.reduce((sum, row) => { for (const key of ['revenue', 'cash', 'transfer', 'orders', 'other', 'ads', 'rent', 'salary', 'expense', 'profit']) sum[key] += Number(row[key]); return sum; }, { revenue: 0, cash: 0, transfer: 0, orders: 0, other: 0, ads: 0, rent: 0, salary: 0, expense: 0, profit: 0 });
   totals.margin = totals.revenue > 0 ? totals.profit / totals.revenue * 100 : 0;
   res.json({ month: req.query.month, totals, daily });
 }));
@@ -133,7 +139,7 @@ const backupDateColumns = {
   pb_cash_movements: ['movement_date'], pb_cash_closures: ['close_date'], pb_expenses: ['expense_date']
 };
 
-router.get('/backup', run(async (_req, res) => {
+router.get('/backup', requireAdmin, run(async (_req, res) => {
   const data = {};
   for (const table of backupTables) data[table] = (await pool.query(`SELECT * FROM ${table} ORDER BY id`)).rows.map(row => {
     const copy = { ...row };
@@ -143,7 +149,7 @@ router.get('/backup', run(async (_req, res) => {
   res.json({ type: 'snappro-photobooth-backup', version: 1, exported_at: new Date().toISOString(), data });
 }));
 
-router.post('/restore', run(async (req, res) => {
+router.post('/restore', requireAdmin, run(async (req, res) => {
   const snapshot = req.body;
   if (snapshot?.type !== 'snappro-photobooth-backup' || snapshot.version !== 1 || !snapshot.data || typeof snapshot.data !== 'object') return fail(res, 'File sao lưu Photobooth không hợp lệ.');
   if (backupTables.some(table => !Array.isArray(snapshot.data[table]) || snapshot.data[table].length > 100000)) return fail(res, 'File sao lưu thiếu bảng hoặc có quá nhiều bản ghi.');

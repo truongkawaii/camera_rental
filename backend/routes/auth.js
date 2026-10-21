@@ -57,6 +57,7 @@ router.post('/login', async (req, res) => {
 
     const token = jwt.sign(payload, process.env.JWT_SECRET || 'fallback_secret', { expiresIn: '8h' });
 
+    const photoboothAccess = await pool.query('SELECT 1 FROM pb_user_access WHERE user_id=$1', [user.id]);
     res.json({
       token,
       user: {
@@ -66,6 +67,7 @@ router.post('/login', async (req, res) => {
         full_name: user.full_name,
         branch_id: user.branch_id,
         branch_ids,
+        photobooth_access: photoboothAccess.rowCount > 0,
       }
     });
   } catch (err) {
@@ -75,8 +77,11 @@ router.post('/login', async (req, res) => {
 });
 
 // Get current user
-router.get('/me', require('../middleware/auth').authenticate, (req, res) => {
-  res.json({ user: req.user });
+router.get('/me', require('../middleware/auth').authenticate, async (req, res, next) => {
+  try {
+    const access = await pool.query('SELECT 1 FROM pb_user_access WHERE user_id=$1', [req.user.id]);
+    res.json({ user: { ...req.user, photobooth_access: access.rowCount > 0 } });
+  } catch (error) { next(error); }
 });
 
 module.exports = router;

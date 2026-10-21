@@ -20,7 +20,7 @@ async function withServer(callback) {
   finally { await new Promise(resolve => server.close(resolve)); }
 }
 
-test('Photobooth API only allows admins', async () => {
+test('Photobooth API rejects unauthenticated and investor requests', async () => {
   await withServer(async base => {
     const anonymous = await fetch(`${base}/api/photobooth/services`);
     assert.equal(anonymous.status, 401);

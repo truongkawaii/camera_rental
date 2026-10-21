@@ -611,7 +611,8 @@ CREATE INDEX IF NOT EXISTS idx_pb_cash_closures_date ON pb_cash_closures(close_d
 CREATE TABLE IF NOT EXISTS pb_expenses (
   id SERIAL PRIMARY KEY,
   expense_date DATE NOT NULL,
-  category VARCHAR(20) NOT NULL CHECK (category IN ('other','ads','rent')),
+  category VARCHAR(20) NOT NULL CHECK (category IN ('other','ads','rent','salary')),
+  staff_id INTEGER REFERENCES pb_staff(id),
   amount NUMERIC(12,2) NOT NULL CHECK (amount > 0),
   note TEXT NOT NULL,
   payment_method VARCHAR(20) NOT NULL CHECK (payment_method IN ('cash','transfer')),
@@ -620,6 +621,14 @@ CREATE TABLE IF NOT EXISTS pb_expenses (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_pb_expenses_date ON pb_expenses(expense_date);
+ALTER TABLE pb_expenses ADD COLUMN IF NOT EXISTS staff_id INTEGER REFERENCES pb_staff(id);
+ALTER TABLE pb_expenses DROP CONSTRAINT IF EXISTS pb_expenses_category_check;
+ALTER TABLE pb_expenses ADD CONSTRAINT pb_expenses_category_check CHECK (category IN ('other','ads','rent','salary'));
+CREATE TABLE IF NOT EXISTS pb_user_access (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  granted_by INTEGER REFERENCES users(id),
+  granted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 CREATE INDEX IF NOT EXISTS idx_commission_rule_sets_active ON commission_rule_sets(is_active, effective_from, effective_to) WHERE is_deleted = false;
 CREATE INDEX IF NOT EXISTS idx_collaborator_hierarchy_child_active ON collaborator_hierarchy(child_user_id, is_active) WHERE is_deleted = false;
 CREATE INDEX IF NOT EXISTS idx_collaborator_hierarchy_parent_active ON collaborator_hierarchy(parent_user_id, is_active) WHERE is_deleted = false;

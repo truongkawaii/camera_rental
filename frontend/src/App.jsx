@@ -13,6 +13,7 @@ import ActivityLog from './pages/ActivityLog';
 import Branches from './pages/Branches';
 import Performance from './pages/Performance';
 import Photobooth from './pages/Photobooth';
+import PhotoboothAccess from './pages/PhotoboothAccess';
 import Investors from './pages/Investors';
 import UsersPage from './pages/Users';
 import SaleAdminTransfers from './pages/SaleAdminTransfers';
@@ -29,6 +30,7 @@ import './index.css';
 /* ── Auth Gate ──────────────────────────────────────────────────── */
 function AuthGate() {
   const { user, loading, logout, isAdmin, isSaler, isCameraManager, isInvestor, isDriver, activeRole, switchRole } = useAuth();
+  const canAccessPhotobooth = isAdmin || (Boolean(user?.photobooth_access) && ['saler', 'camera_manager', 'driver'].includes(activeRole));
   const [sidebarOpen, setSidebarOpen] = React.useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [roleDropdownOpen, setRoleDropdownOpen] = React.useState(false);
@@ -53,8 +55,8 @@ function AuthGate() {
   if (!user) return <Login />;
 
   // Photobooth is a separate workspace with its own navigation and data scope.
-  if (location.pathname.startsWith('/photobooth')) {
-    return isAdmin ? <Photobooth key={activeRole} /> : <Navigate to="/rentals" replace />;
+  if (location.pathname === '/photobooth' || location.pathname.startsWith('/photobooth/')) {
+    return canAccessPhotobooth ? <Photobooth key={activeRole} /> : <Navigate to="/rentals" replace />;
   }
 
   return (
@@ -179,7 +181,7 @@ function AuthGate() {
               items: [
                 { to: '/', icon: <BarChart3 size={18} />, label: 'Dashboard', visible: isAdmin || isCameraManager || isInvestor || isDriver },
                 { to: '/performance', icon: <TrendingUp size={18} />, label: 'Hiệu Suất', visible: true },
-                { to: '/photobooth', icon: <Camera size={18} />, label: 'Photobooth', visible: isAdmin },
+                { to: '/photobooth', icon: <Camera size={18} />, label: 'Photobooth', visible: canAccessPhotobooth },
               ]
             },
             {
@@ -205,6 +207,7 @@ function AuthGate() {
               items: [
                 { to: '/customers', icon: <Users size={18} />, label: 'Khách Hàng', visible: true },
                 { to: '/users', icon: <Users size={18} />, label: 'Tài Khoản', visible: isAdmin },
+                { to: '/photobooth-access', icon: <ShieldCheck size={18} />, label: 'Quyền Photobooth', visible: isAdmin },
               ]
             },
             {
@@ -328,7 +331,8 @@ function AuthGate() {
             <Route path="/commission-configs" element={isAdmin ? <CommissionConfigs key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/collaborators" element={isAdmin ? <CollaboratorHierarchy key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/performance" element={<Performance key={activeRole} />} />
-            <Route path="/photobooth/*" element={isAdmin ? <Photobooth key={activeRole} /> : <Navigate to="/rentals" replace />} />
+            <Route path="/photobooth-access" element={isAdmin ? <PhotoboothAccess /> : <Navigate to="/rentals" replace />} />
+            <Route path="/photobooth/*" element={canAccessPhotobooth ? <Photobooth key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/investors" element={(isAdmin || isInvestor) ? <Investors key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/activity"  element={isAdmin ? <ActivityLog key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="*"          element={<Navigate to={(isAdmin || isCameraManager || isInvestor || isDriver) ? "/" : "/rentals"} replace />} />

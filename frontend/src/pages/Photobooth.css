@@ -26,6 +26,7 @@
 .pb-date{display:flex;align-items:center;gap:7px;background:#fff;border:1px solid #f0dfe8;border-radius:11px;color:#ba678d;padding:5px 10px}
 .pb-date input{border:0;outline:0;background:transparent;color:#68545f;font-weight:600;font-size:12px}
 .pb-stat-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.pb-finance-stats{grid-template-columns:repeat(5,minmax(0,1fr))}
 .pb-stat{min-width:0;background:#fff;border:1px solid #f3e7ee;border-radius:18px;padding:19px 20px;box-shadow:0 5px 22px #8a527010;display:flex;flex-direction:column;align-items:flex-start}
 .pb-stat-icon{width:41px;height:41px;border-radius:12px;display:grid;place-items:center;margin-bottom:13px}
 .pb-stat-icon.pink{color:#e75499;background:#ffeaf3}

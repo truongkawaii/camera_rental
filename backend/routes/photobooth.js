@@ -1,9 +1,10 @@
 const express = require('express');
 const { pool } = require('../utils/db');
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const { authenticate } = require('../middleware/auth');
+const { requirePhotoboothAccess } = require('../middleware/photoboothAccess');
 
 const router = express.Router();
-router.use(authenticate, requireAdmin);
+router.use(authenticate, requirePhotoboothAccess);
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const validDate = (value) => typeof value === 'string' && datePattern.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
@@ -64,19 +65,17 @@ router.get('/overview', run(async (req, res) => {
       COALESCE(SUM(CASE WHEN category='shoot' THEN quantity ELSE 0 END),0)::int AS shoots,
       COALESCE(SUM(gift_quantity),0)::int AS gifts, COALESCE(SUM(cash_in_drawer),0)::float AS cash_sales, COUNT(*)::int AS transactions
     FROM pb_transactions WHERE sale_date = $1::date AND status='completed'`, [date]);
-  const [recent, shifts, tasks, services, gifts, assets, incidents, trend, mix, channels] = await Promise.all([
+  const [recent, shifts, tasks, services, gifts, trend, mix, channels] = await Promise.all([
     pool.query(`SELECT t.*,t.sale_date::text AS sale_date, s.name AS staff_name, g.name AS gift_name FROM pb_transactions t LEFT JOIN pb_staff s ON s.id=t.staff_id LEFT JOIN pb_gifts g ON g.id=t.gift_id WHERE t.sale_date=$1::date AND t.status='completed' ORDER BY t.happened_at DESC, t.id DESC LIMIT 12`, [date]),
     pool.query(`SELECT sh.*,sh.work_date::text AS work_date, st.name AS staff_name FROM pb_shifts sh JOIN pb_staff st ON st.id=sh.staff_id WHERE sh.work_date=$1::date AND sh.status<>'cancelled' ORDER BY sh.start_time`, [date]),
     pool.query(`SELECT t.*,t.work_date::text AS work_date, s.name AS staff_name FROM pb_tasks t LEFT JOIN pb_staff s ON s.id=t.staff_id WHERE t.work_date=$1::date ORDER BY t.done, t.id`, [date]),
     pool.query('SELECT * FROM pb_services WHERE active=true ORDER BY name'),
     pool.query('SELECT * FROM pb_gifts WHERE active=true ORDER BY name'),
-    pool.query('SELECT * FROM pb_assets ORDER BY name'),
-    pool.query(`SELECT i.*, a.name AS asset_name FROM pb_incidents i JOIN pb_assets a ON a.id=i.asset_id WHERE i.status<>'resolved' ORDER BY i.reported_at DESC LIMIT 5`),
     pool.query(`SELECT d::date::text AS day, COALESCE(SUM(t.total_amount),0)::float AS revenue FROM generate_series($1::date - interval '6 days',$1::date,interval '1 day') d LEFT JOIN pb_transactions t ON t.sale_date=d::date AND t.status='completed' GROUP BY d ORDER BY d`, [date]),
     pool.query(`SELECT category, COALESCE(SUM(total_amount),0)::float AS revenue FROM pb_transactions WHERE sale_date=$1::date AND status='completed' GROUP BY category ORDER BY revenue DESC`, [date]),
     pool.query(`SELECT customer_source, COUNT(*)::int AS count FROM pb_transactions WHERE sale_date=$1::date AND status='completed' AND customer_source IS NOT NULL GROUP BY customer_source`, [date])
   ]);
-  res.json({ date, metrics: day.rows[0], recent: recent.rows, shifts: shifts.rows, tasks: tasks.rows, services: services.rows, gifts: gifts.rows, assets: assets.rows, incidents: incidents.rows, trend: trend.rows, mix: mix.rows, channels: channels.rows });
+  res.json({ date, metrics: day.rows[0], recent: recent.rows, shifts: shifts.rows, tasks: tasks.rows, services: services.rows, gifts: gifts.rows, trend: trend.rows, mix: mix.rows, channels: channels.rows });
 }));
 
 router.get('/reports', run(async (req, res) => {
