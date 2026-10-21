@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ResponsiveContainer, AreaChart, Area, CartesianGrid, XAxis, Tooltip, PieChart, Pie, Cell } from 'recharts';
-import { ArrowLeft, ArrowRight, CalendarDays, Camera, CheckCircle2, ClipboardList, CreditCard, Download, Gift, LayoutDashboard, Plus, Printer, ShoppingBag, Sparkles, TrendingUp, Users, Wallet, Wrench, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CalendarDays, Camera, CheckCircle2, ClipboardList, CreditCard, Gift, LayoutDashboard, Plus, ShoppingBag, Sparkles, TrendingUp, Users, Wallet, Wrench, X } from 'lucide-react';
 import { photoboothApi } from '../api/client';
 import { BackupControls, CashPanel, CustomersPanel, FinancePanel, OrderForm, ReportsPanel } from './PhotoboothOperations';
 import './Photobooth.css';
@@ -11,8 +11,7 @@ const money = (value) => `${Number(value || 0).toLocaleString('vi-VN')} ₫`;
 const dayLabel = (date) => date ? new Date(`${String(date).slice(0, 10)}T00:00:00`).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }) : '';
 const categoryLabels = { shoot: 'Chụp ảnh', print: 'In ảnh', other: 'Khác' };
 const paymentLabels = { cash: 'Tiền mặt', transfer: 'Chuyển khoản', card: 'Thẻ', mixed: 'Tiền mặt + CK' };
-const sourceLabels = { walk_in: 'Khách vãng lai', social: 'Mạng xã hội', referral: 'Giới thiệu', other: 'Khác' };
-const statusLabels = { active: 'Đang hoạt động', maintenance: 'Bảo trì', offline: 'Ngừng hoạt động', scheduled: 'Đã xếp ca', working: 'Đang làm', done: 'Hoàn tất', open: 'Mới báo', in_progress: 'Đang xử lý', resolved: 'Đã xử lý' };
+const statusLabels = { active: 'Đang hoạt động', maintenance: 'Bảo trì', offline: 'Ngừng hoạt động', scheduled: 'Đã xếp ca', working: 'Đang làm', done: 'Hoàn tất', cancelled: 'Đã hủy', open: 'Mới báo', in_progress: 'Đang xử lý', resolved: 'Đã xử lý' };
 const tabs = [
   { key: 'overview', label: 'Tổng quan', icon: LayoutDashboard },
   { key: 'transactions', label: 'Thu tiền khách', icon: CreditCard },
@@ -34,7 +33,7 @@ const configs = {
   assets: { title: 'thiết bị', columns: [['name', 'Thiết bị'], ['code', 'Mã'], ['kind', 'Phân loại'], ['status', 'Trạng thái'], ['note', 'Ghi chú']], fields: [['name', 'Tên thiết bị', 'text', true], ['code', 'Mã thiết bị', 'text'], ['kind', 'Phân loại', 'text'], ['status', 'Trạng thái', 'select', true, { active: 'Đang hoạt động', maintenance: 'Bảo trì', offline: 'Ngừng hoạt động' }], ['note', 'Ghi chú', 'text']], defaults: { kind: 'Thiết bị', status: 'active' } },
   incidents: { title: 'sự cố', columns: [['reported_at', 'Báo lúc'], ['asset_name', 'Thiết bị'], ['title', 'Sự cố'], ['status', 'Trạng thái'], ['cost', 'Chi phí'], ['resolution', 'Kết quả']], fields: [['asset_id', 'Thiết bị', 'asset', true], ['title', 'Tên sự cố', 'text', true], ['description', 'Mô tả', 'text'], ['status', 'Trạng thái', 'select', true, { open: 'Mới báo', in_progress: 'Đang xử lý', resolved: 'Đã xử lý' }], ['cost', 'Chi phí (₫)', 'number'], ['resolution', 'Kết quả xử lý', 'text']], defaults: { status: 'open', cost: 0 } },
   staff: { title: 'nhân viên', columns: [['name', 'Nhân viên'], ['role', 'Vai trò'], ['phone', 'Số điện thoại'], ['active', 'Trạng thái']], fields: [['name', 'Họ tên', 'text', true], ['role', 'Vai trò', 'text'], ['phone', 'Số điện thoại', 'text'], ['active', 'Đang làm việc', 'checkbox']], defaults: { role: 'Nhân viên', active: true } },
-  shifts: { title: 'ca làm', columns: [['work_date', 'Ngày'], ['staff_name', 'Nhân viên'], ['start_time', 'Bắt đầu'], ['end_time', 'Kết thúc'], ['status', 'Trạng thái']], fields: [['work_date', 'Ngày làm', 'date', true], ['staff_id', 'Nhân viên', 'staff', true], ['start_time', 'Giờ bắt đầu', 'time', true], ['end_time', 'Giờ kết thúc', 'time', true], ['status', 'Trạng thái', 'select', true, { scheduled: 'Đã xếp ca', working: 'Đang làm', done: 'Hoàn tất' }], ['note', 'Ghi chú', 'text']], defaults: { work_date: vnDate(), start_time: '09:00', end_time: '17:00', status: 'scheduled' } },
+  shifts: { title: 'ca làm', columns: [['work_date', 'Ngày'], ['staff_name', 'Nhân viên'], ['label', 'Ca'], ['start_time', 'Bắt đầu'], ['end_time', 'Kết thúc'], ['status', 'Trạng thái']], fields: [['work_date', 'Ngày làm', 'date', true], ['staff_id', 'Nhân viên', 'staff', true], ['label', 'Tên ca', 'select', true, { 'Ca sáng': 'Ca sáng', 'Ca chiều': 'Ca chiều', 'Ca tối': 'Ca tối', 'Ca khác': 'Ca khác' }], ['start_time', 'Giờ bắt đầu', 'time', true], ['end_time', 'Giờ kết thúc', 'time', true], ['status', 'Trạng thái', 'select', true, { scheduled: 'Đã xếp ca', working: 'Đang làm', done: 'Hoàn tất', cancelled: 'Đã hủy' }], ['note', 'Ghi chú', 'text']], defaults: { work_date: vnDate(), label: 'Ca sáng', start_time: '09:00', end_time: '17:00', status: 'scheduled' } },
   tasks: { title: 'công việc', columns: [['work_date', 'Ngày'], ['title', 'Công việc'], ['staff_name', 'Phụ trách'], ['done', 'Trạng thái']], fields: [['work_date', 'Ngày', 'date', true], ['title', 'Nội dung công việc', 'text', true], ['staff_id', 'Người phụ trách', 'staff'], ['done', 'Đã hoàn thành', 'checkbox']], defaults: { work_date: vnDate(), done: false } }
 };
 
@@ -69,6 +68,7 @@ export default function Photobooth() {
   const tab = tabs.find(item => location.pathname === `/photobooth/${item.key}`)?.key || 'overview';
   const [date, setDate] = useState(vnDate());
   const [data, setData] = useState(null);
+  const [overviewCash, setOverviewCash] = useState(null);
   const [rows, setRows] = useState([]);
   const [staff, setStaff] = useState([]);
   const [assets, setAssets] = useState([]);
@@ -92,7 +92,10 @@ export default function Photobooth() {
   const refresh = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      if (tab === 'overview') setData((await photoboothApi.overview(date)).data);
+      if (tab === 'overview') {
+        const [overview, cash] = await Promise.all([photoboothApi.overview(date), photoboothApi.cash(date)]);
+        setData(overview.data); setOverviewCash(cash.data.summary);
+      }
       else if (tab === 'reports') {
         const [summary, orders] = await Promise.all([photoboothApi.reports(reportFrom, reportTo), photoboothApi.transactionsRange(reportFrom, reportTo)]);
         setReport(summary.data); setReportOrders(orders.data);
@@ -157,7 +160,7 @@ export default function Photobooth() {
   const activeTitle = tabs.find(item => item.key === tab)?.label;
   return <div className="pb-page">
     <div className="pb-topline"><Link to="/" className="pb-back"><ArrowLeft size={15} /> Hệ thống SnapPro</Link><BackupControls /></div>
-    <div className="pb-hero"><div className="pb-brand-mark"><Camera size={27} /></div><div><p className="pb-eyebrow">PHOTOBOOTH WORKSPACE</p><h1>Photobooth</h1><p>Vận hành cửa hàng, doanh thu và trải nghiệm khách hàng trong một nơi.</p></div><div className="pb-hero-decor"><Sparkles size={46} /></div></div>
+    <div className="pb-hero"><div className="pb-brand-mark"><Camera size={27} /></div><div><p className="pb-eyebrow">PHOTOBOOTH & PRINT STUDIO · 75 PHỐ XỐM, HÀ ĐÔNG</p><h1>Insphoto ♡</h1><p>Vận hành cửa hàng, doanh thu và trải nghiệm khách hàng trong một nơi.</p></div><div className="pb-hero-decor"><Sparkles size={46} /></div></div>
     <nav className="pb-tabs" aria-label="Quản lý Photobooth">{tabs.map(item => { const Icon = item.icon; return <Link key={item.key} to={item.key === 'overview' ? '/photobooth' : `/photobooth/${item.key}`} className={`pb-tab ${tab === item.key ? 'active' : ''}`}><Icon size={17} /><span>{item.label}</span></Link>; })}</nav>
     <div className="pb-content">
       <div className="pb-section-head"><div><p className="pb-eyebrow">{tab === 'overview' ? 'DỮ LIỆU THỰC TẾ' : 'QUẢN LÝ PHOTOBOOTH'}</p><h2>{tab === 'overview' ? 'Tổng quan vận hành' : activeTitle}</h2><p>{tab === 'overview' ? 'Theo dõi hoạt động cửa hàng theo ngày.' : tab === 'reports' ? 'Doanh thu được tổng hợp từ giao dịch Photobooth.' : 'Dữ liệu ở đây chỉ thuộc khu Photobooth.'}</p></div><div className="pb-actions">
@@ -168,7 +171,7 @@ export default function Photobooth() {
       {error && <div className="pb-error" role="alert">{error}<button onClick={() => setError('')} aria-label="Đóng thông báo"><X size={15} /></button></div>}
       {loading ? <div className="pb-loading">Đang tải dữ liệu Photobooth...</div> : tab === 'overview' ? <>
         <div className="pb-stat-grid">
-          {[['Doanh thu ngày', money(data?.metrics?.revenue), CreditCard, 'pink'], ['Số đơn', data?.metrics?.transactions || 0, ShoppingBag, 'purple'], ['Lượt chụp', data?.metrics?.shoots || 0, Camera, 'blue'], ['Tiền mặt từ đơn', money(data?.metrics?.cash_sales), Wallet, 'orange']].map(([label, value, Icon, tone]) => <div className="pb-stat" key={label}><span className={`pb-stat-icon ${tone}`}><Icon size={21} /></span><small>{label}</small><strong>{value}</strong><span className="pb-stat-note">Ngày {dayLabel(date)}</span></div>)}
+          {[['Doanh thu ngày', money(data?.metrics?.revenue), CreditCard, 'pink'], ['Số đơn', data?.metrics?.transactions || 0, ShoppingBag, 'purple'], ['Lượt chụp', data?.metrics?.shoots || 0, Camera, 'blue'], ['Tiền mặt tại quầy (dự kiến)', money(overviewCash?.expected), Wallet, 'orange']].map(([label, value, Icon, tone]) => <div className="pb-stat" key={label}><span className={`pb-stat-icon ${tone}`}><Icon size={21} /></span><small>{label}</small><strong>{value}</strong><span className="pb-stat-note">Ngày {dayLabel(date)}</span></div>)}
         </div>
         <div className="pb-grid-two"><section className="pb-card"><div className="pb-card-head"><div><h3>Doanh thu 7 ngày</h3><p>Giao dịch đã ghi nhận</p></div><TrendingUp size={18} /></div><div className="pb-chart"><ResponsiveContainer width="100%" height="100%"><AreaChart data={(data?.trend || []).map(item => ({ ...item, label: dayLabel(item.day) }))}><defs><linearGradient id="pbArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#eb70a6" stopOpacity={0.28}/><stop offset="100%" stopColor="#eb70a6" stopOpacity={0}/></linearGradient></defs><CartesianGrid stroke="#f4e9ee" vertical={false} /><XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: '#9e8793', fontSize: 11 }} /><Tooltip formatter={value => money(value)} /><Area type="monotone" dataKey="revenue" stroke="#e85496" strokeWidth={3} fill="url(#pbArea)" /></AreaChart></ResponsiveContainer></div></section>
           <section className="pb-card"><div className="pb-card-head"><div><h3>Cơ cấu dịch vụ</h3><p>Doanh thu trong ngày</p></div><ShoppingBag size={18} /></div>{data?.mix?.length ? <div className="pb-mix"><div className="pb-donut"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={data.mix} dataKey="revenue" innerRadius={55} outerRadius={78} paddingAngle={3}>{data.mix.map((_, i) => <Cell key={i} fill={['#e95c9b', '#8f77e8', '#f4b86e'][i % 3]} />)}</Pie><Tooltip formatter={value => money(value)} /></PieChart></ResponsiveContainer></div><div className="pb-mix-list">{data.mix.map((item, i) => <div key={item.category}><i style={{ background: ['#e95c9b', '#8f77e8', '#f4b86e'][i % 3] }} /><span>{categoryLabels[item.category] || item.category}</span><strong>{money(item.revenue)}</strong></div>)}</div></div> : <Empty title="Chưa có giao dịch" detail="Cơ cấu dịch vụ sẽ hiện khi cửa hàng ghi nhận giao dịch." />}</section></div>

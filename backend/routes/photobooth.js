@@ -22,7 +22,7 @@ const resources = {
   assets: { table: 'pb_assets', columns: ['name', 'code', 'kind', 'status', 'note'], order: 'name' },
   incidents: { table: 'pb_incidents', columns: ['asset_id', 'title', 'description', 'status', 'cost', 'resolution'], order: 'reported_at DESC' },
   staff: { table: 'pb_staff', columns: ['name', 'role', 'phone', 'active'], order: 'name' },
-  shifts: { table: 'pb_shifts', columns: ['work_date', 'start_time', 'end_time', 'staff_id', 'status', 'note'], order: 'work_date DESC, start_time' },
+  shifts: { table: 'pb_shifts', columns: ['work_date', 'label', 'start_time', 'end_time', 'staff_id', 'status', 'note'], order: 'work_date DESC, start_time' },
   tasks: { table: 'pb_tasks', columns: ['work_date', 'title', 'staff_id', 'done'], order: 'work_date DESC, id DESC' }
 };
 
@@ -46,7 +46,7 @@ function validate(resource, body, updating = false) {
     if ((!updating || 'work_date' in body) && !validDate(body.work_date)) return 'Ngày làm việc không hợp lệ.';
     if ((!updating || 'staff_id' in body) && !positiveId(body.staff_id)) return 'Vui lòng chọn nhân viên.';
     for (const field of ['start_time', 'end_time']) if ((!updating || field in body) && !/^\d{2}:\d{2}$/.test(body[field] || '')) return 'Giờ ca làm không hợp lệ.';
-    if ('status' in body && !['scheduled', 'working', 'done'].includes(body.status)) return 'Trạng thái ca không hợp lệ.';
+    if ('status' in body && !['scheduled', 'working', 'done', 'cancelled'].includes(body.status)) return 'Trạng thái ca không hợp lệ.';
   }
   if (resource === 'tasks') {
     if ((!updating || 'work_date' in body) && !validDate(body.work_date)) return 'Ngày công việc không hợp lệ.';
@@ -66,7 +66,7 @@ router.get('/overview', run(async (req, res) => {
     FROM pb_transactions WHERE sale_date = $1::date AND status='completed'`, [date]);
   const [recent, shifts, tasks, services, gifts, assets, incidents, trend, mix, channels] = await Promise.all([
     pool.query(`SELECT t.*,t.sale_date::text AS sale_date, s.name AS staff_name, g.name AS gift_name FROM pb_transactions t LEFT JOIN pb_staff s ON s.id=t.staff_id LEFT JOIN pb_gifts g ON g.id=t.gift_id WHERE t.sale_date=$1::date AND t.status='completed' ORDER BY t.happened_at DESC, t.id DESC LIMIT 12`, [date]),
-    pool.query(`SELECT sh.*,sh.work_date::text AS work_date, st.name AS staff_name FROM pb_shifts sh JOIN pb_staff st ON st.id=sh.staff_id WHERE sh.work_date=$1::date ORDER BY sh.start_time`, [date]),
+    pool.query(`SELECT sh.*,sh.work_date::text AS work_date, st.name AS staff_name FROM pb_shifts sh JOIN pb_staff st ON st.id=sh.staff_id WHERE sh.work_date=$1::date AND sh.status<>'cancelled' ORDER BY sh.start_time`, [date]),
     pool.query(`SELECT t.*,t.work_date::text AS work_date, s.name AS staff_name FROM pb_tasks t LEFT JOIN pb_staff s ON s.id=t.staff_id WHERE t.work_date=$1::date ORDER BY t.done, t.id`, [date]),
     pool.query('SELECT * FROM pb_services WHERE active=true ORDER BY name'),
     pool.query('SELECT * FROM pb_gifts WHERE active=true ORDER BY name'),

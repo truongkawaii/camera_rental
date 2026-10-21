@@ -97,6 +97,7 @@ export function OrderForm({ form, setForm, services, staff, gifts, busy, onSave,
   const change = Math.max(0, cash + transfer - total);
   const missing = Math.max(0, total - cash - transfer);
   const cashInDrawer = Math.max(0, cash - change);
+  const invalidTransfer = transfer > total;
   const update = (key, value) => setForm(current => ({ ...current, [key]: value }));
   return <form className="pb-inline-form pb-order-form" onSubmit={onSave}>
     <label>Ngày đơn hàng *<input type="date" required value={form.sale_date || ''} onChange={e => update('sale_date', e.target.value)} /></label>
@@ -115,8 +116,8 @@ export function OrderForm({ form, setForm, services, staff, gifts, busy, onSave,
     <label>Số quà<input type="number" min="0" step="1" value={form.gift_quantity} onChange={e => update('gift_quantity', e.target.value)} /></label>
     <label>Nguồn khách<select value={form.customer_source || ''} onChange={e => update('customer_source', e.target.value)}><option value="walk_in">Khách vãng lai</option><option value="social">Mạng xã hội</option><option value="referral">Giới thiệu</option><option value="other">Khác</option></select></label>
     <label className="pb-check pb-wide"><input type="checkbox" checked={Boolean(form.marketing_consent)} onChange={e => update('marketing_consent', e.target.checked)} /> Khách đồng ý nhận thông tin ưu đãi / marketing</label>
-    <div className="pb-wide pb-order-calc"><strong>Thành tiền: {money(total)}</strong><span>Tiền thối khách: {money(change)} · Còn thiếu: {money(missing)}</span><span>Tiền mặt thực vào quầy: {money(cashInDrawer)}</span></div>
-    <div className="pb-form-actions pb-wide"><button type="button" onClick={onCancel}>Hủy</button><button className="pb-primary" disabled={busy || missing > 0 || Number(form.discount_amount) > subtotal}>{busy ? 'Đang lưu...' : 'Lưu đơn hàng'}</button></div>
+    <div className="pb-wide pb-order-calc"><strong>Thành tiền: {money(total)}</strong><span>Tiền thối khách: {money(change)} · Còn thiếu: {money(missing)}</span><span>Tiền mặt thực vào quầy: {money(cashInDrawer)}</span>{invalidTransfer && <span className="pb-alert-text">Tiền chuyển khoản không được vượt thành tiền.</span>}</div>
+    <div className="pb-form-actions pb-wide"><button type="button" onClick={onCancel}>Hủy</button><button className="pb-primary" disabled={busy || missing > 0 || invalidTransfer || Number(form.discount_amount) > subtotal}>{busy ? 'Đang lưu...' : 'Lưu đơn hàng'}</button></div>
   </form>;
 }
 

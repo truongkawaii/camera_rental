@@ -575,6 +575,9 @@ ALTER TABLE pb_transactions ADD COLUMN IF NOT EXISTS marketing_consent BOOLEAN N
 ALTER TABLE pb_transactions ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'completed';
 ALTER TABLE pb_transactions ADD COLUMN IF NOT EXISTS void_reason TEXT;
 ALTER TABLE pb_transactions ADD COLUMN IF NOT EXISTS voided_at TIMESTAMPTZ;
+ALTER TABLE pb_shifts ADD COLUMN IF NOT EXISTS label VARCHAR(40);
+ALTER TABLE pb_shifts DROP CONSTRAINT IF EXISTS pb_shifts_status_check;
+ALTER TABLE pb_shifts ADD CONSTRAINT pb_shifts_status_check CHECK (status IN ('scheduled','working','done','cancelled'));
 UPDATE pb_transactions SET sale_date=(happened_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date WHERE sale_date IS NULL;
 UPDATE pb_transactions SET cash_received=total_amount, cash_in_drawer=total_amount WHERE payment_method='cash' AND cash_received=0 AND transfer_received=0;
 UPDATE pb_transactions SET transfer_received=total_amount WHERE payment_method='transfer' AND cash_received=0 AND transfer_received=0;
