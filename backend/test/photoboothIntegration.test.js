@@ -21,7 +21,7 @@ test('Photobooth order, drawer and finance stay separate from camera rentals', {
     return value;
   }
   try {
-    await pool.query('TRUNCATE pb_services,pb_gifts,pb_assets,pb_staff,pb_shifts,pb_tasks,pb_incidents,pb_transactions,pb_gift_movements,pb_cash_movements,pb_cash_closures,pb_expenses RESTART IDENTITY');
+    await pool.query('TRUNCATE pb_services,pb_gifts,pb_assets,pb_staff,pb_shifts,pb_tasks,pb_incidents,pb_transactions,pb_gift_movements,pb_cash_movements,pb_cash_closures,pb_machine_movements,pb_machine_counts,pb_expenses RESTART IDENTITY');
     const before = (await pool.query('SELECT count(*)::int AS count FROM rentals')).rows[0].count;
     const role = await pool.query("INSERT INTO roles(name) VALUES('saler') ON CONFLICT(name) DO UPDATE SET name=EXCLUDED.name RETURNING id");
     for (const name of ['admin', 'saler']) {
@@ -74,17 +74,58 @@ test('Photobooth order, drawer and finance stay separate from camera rentals', {
     assert.equal((await call('/finance?month=2026-10')).totals.revenue, 0);
     assert.equal((await call('/cash?date=2026-10-21')).summary.expected, 20000);
     assert.equal(Number((await call('/gifts')).find(item => item.id === gift.id).quantity), 2);
+    const self = await call('/transactions', 'POST', { sale_date: '2026-10-21', service_id: service.id, quantity: 1, source_mode: 'machine_self', staff_id: staff.id });
+    const exchanged = await call('/transactions', 'POST', { sale_date: '2026-10-21', service_id: service.id, quantity: 1, source_mode: 'machine_exchange', staff_id: staff.id });
+    const counterSale = await call('/transactions', 'POST', { sale_date: '2026-10-21', service_id: service.id, quantity: 1, unit_price: 30000, source_mode: 'counter', cash_received: 40000, transfer_received: 0, staff_id: staff.id });
+    assert.equal(Number(self.cash_in_drawer), 0);
+    assert.equal(Number(self.transfer_received), 0);
+    assert.equal(Number(exchanged.cash_in_drawer), -70000);
+    assert.equal(Number(exchanged.transfer_received), 70000);
+    assert.equal(Number(counterSale.cash_in_drawer), 30000);
+    const badMachinePayment = await fetch(`${base}/transactions`, { method: 'POST', headers: { Authorization: authorization, 'Content-Type': 'application/json' }, body: JSON.stringify({ sale_date: '2026-10-21', service_id: service.id, quantity: 1, source_mode: 'machine_self', staff_id: staff.id, cash_received: 70000 }) });
+    assert.equal(badMachinePayment.status, 400);
+    await call('/ptb/movements', 'POST', { movement_date: '2026-10-21', type: 'opening', amount: 10000, staff_id: staff.id });
+    await call('/ptb/movements', 'POST', { movement_date: '2026-10-21', type: 'collect', destination: 'counter', amount: 60000, staff_id: staff.id });
+    await call('/ptb/movements', 'POST', { movement_date: '2026-10-21', type: 'collect', destination: 'bank', amount: 20000, staff_id: staff.id });
+    const duplicateOpening = await fetch(`${base}/ptb/movements`, { method: 'POST', headers: { Authorization: authorization, 'Content-Type': 'application/json' }, body: JSON.stringify({ movement_date: '2026-10-21', type: 'opening', amount: 10000 }) });
+    assert.equal(duplicateOpening.status, 400);
+    const ptb = await call('/ptb?date=2026-10-21');
+    assert.equal(ptb.sources.machine_self.revenue, 70000);
+    assert.equal(ptb.sources.machine_exchange.revenue, 70000);
+    assert.equal(ptb.sources.counter.revenue, 30000);
+    assert.equal(ptb.totals.revenue, 170000);
+    assert.equal(ptb.totals.transfer, 70000);
+    assert.equal(ptb.machine.expected, 70000);
+    assert.equal(ptb.machine.collectedToCounter, 60000);
+    assert.equal(ptb.machine.collectedToBank, 20000);
+    assert.equal(ptb.counter.salesCash, -40000);
+    assert.equal(ptb.counter.machineCollected, 60000);
+    assert.equal(ptb.counter.expected, 40000);
+    const machineCount = await call('/ptb/counts', 'POST', { count_date: '2026-10-21', actual_amount: 65000, staff_id: staff.id });
+    assert.equal(Number(machineCount.difference_amount), -5000);
+    assert.equal((await call('/finance?month=2026-10')).totals.revenue, 170000);
+    assert.equal((await call('/reports?from=2026-10-21&to=2026-10-21')).sources.length, 3);
     const backup = await call('/backup');
     assert.equal(backup.type, 'snappro-photobooth-backup');
+    assert.equal(backup.version, 2);
+    assert.equal(backup.data.pb_machine_movements.length, 3);
+    assert.equal(backup.data.pb_machine_counts.length, 1);
     assert.ok(backup.data.pb_transactions.length > 0);
     assert.equal(backup.data.pb_transactions[0].sale_date, '2026-10-21');
     await call('/restore', 'POST', backup);
     assert.equal((await call('/transactions?date=2026-10-21')).length, backup.data.pb_transactions.length);
+    assert.equal((await call('/ptb?date=2026-10-21')).machine.expected, 70000);
     const invalid = structuredClone(backup);
     invalid.data.pb_services[0].unknown_column = 'invalid';
     const rejected = await fetch(`${base}/restore`, { method: 'POST', headers: { Authorization: authorization, 'Content-Type': 'application/json' }, body: JSON.stringify(invalid) });
     assert.equal(rejected.status, 400);
     assert.equal((await call('/transactions?date=2026-10-21')).length, backup.data.pb_transactions.length);
+    const legacyBackup = structuredClone(backup);
+    legacyBackup.version = 1;
+    delete legacyBackup.data.pb_machine_movements;
+    delete legacyBackup.data.pb_machine_counts;
+    await call('/restore', 'POST', legacyBackup);
+    assert.equal((await call('/ptb?date=2026-10-21')).machine.expected, 140000);
     assert.equal((await pool.query('SELECT count(*)::int AS count FROM rentals')).rows[0].count, before);
   } finally {
     if (temporaryUsers.length) {

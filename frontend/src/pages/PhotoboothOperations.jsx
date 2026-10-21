@@ -6,6 +6,7 @@ const money = value => `${Number(value || 0).toLocaleString('vi-VN')} ₫`;
 const day = value => value ? String(value).slice(0, 10) : '';
 const category = { other: 'Phát sinh', ads: 'ADS', rent: 'Mặt bằng', salary: 'Lương nhân viên' };
 const movement = { opening: 'Đầu ca/ngày', in: 'Thu thêm', out: 'Chi/rút', exchange: 'Đổi mệnh giá' };
+export const sourceModes = { machine_self: 'Khách tự bỏ tiền vào máy PTB', machine_exchange: 'Khách CK, thu ngân đổi tiền vào máy', counter: 'In thêm / bán tại quầy' };
 const errorText = error => error?.response?.data?.error || 'Không thể lưu dữ liệu. Vui lòng thử lại.';
 
 export function downloadCsv(filename, rows) {
@@ -36,7 +37,7 @@ export function BackupControls() {
     setError(''); setPhrase('');
     try {
       const value = JSON.parse(await file.text());
-      if (value.type !== 'snappro-photobooth-backup' || value.version !== 1 || !value.data || !Array.isArray(value.data.pb_transactions)) throw new Error('File sao lưu Photobooth không hợp lệ.');
+      if (value.type !== 'snappro-photobooth-backup' || ![1, 2].includes(value.version) || !value.data || !Array.isArray(value.data.pb_transactions)) throw new Error('File sao lưu Photobooth không hợp lệ.');
       setSnapshot(value);
     } catch (err) { setError(err.message || 'Không đọc được file sao lưu.'); }
   }
@@ -47,7 +48,7 @@ export function BackupControls() {
     catch (err) { setError(errorText(err)); setBusy(false); }
   }
   return <><div className="pb-backup-actions"><button onClick={exportBackup}><Download size={14} /> Xuất sao lưu JSON</button><button onClick={() => input.current?.click()}>Khôi phục dữ liệu</button><input ref={input} type="file" accept=".json,application/json" hidden onChange={selectFile} /></div>{error && <div className="pb-backup-error" role="alert">{error}</div>}
-    {snapshot && <div className="pb-modal-backdrop"><div className="pb-modal pb-restore-modal" role="dialog" aria-modal="true" aria-label="Xác nhận khôi phục Photobooth"><h2>Khôi phục dữ liệu Photobooth</h2><p>File ngày {new Date(snapshot.exported_at || Date.now()).toLocaleString('vi-VN')} có {snapshot.data.pb_transactions.length} đơn hàng và {(snapshot.data.pb_expenses || []).length} khoản chi.</p><div className="pb-notice">Dữ liệu Photobooth hiện có sẽ được thay bằng bản sao lưu này. Dữ liệu thuê camera không bị tác động. Nếu file lỗi, hệ thống giữ nguyên dữ liệu hiện tại.</div><label>Nhập <strong>KHOI PHUC</strong> để xác nhận<input value={phrase} onChange={e => setPhrase(e.target.value)} autoFocus /></label>{error && <div className="pb-error">{error}</div>}<div className="pb-form-actions"><button onClick={() => { setSnapshot(null); setError(''); }}>Hủy</button><button className="pb-primary" onClick={restoreBackup} disabled={busy || phrase !== 'KHOI PHUC'}>{busy ? 'Đang khôi phục...' : 'Khôi phục Photobooth'}</button></div></div></div>}
+    {snapshot && <div className="pb-modal-backdrop"><div className="pb-modal pb-restore-modal" role="dialog" aria-modal="true" aria-label="Xác nhận khôi phục Photobooth"><h2>Khôi phục dữ liệu Photobooth</h2><p>File ngày {new Date(snapshot.exported_at || Date.now()).toLocaleString('vi-VN')} có {snapshot.data.pb_transactions.length} đơn hàng và {(snapshot.data.pb_expenses || []).length} khoản chi.</p><div className="pb-notice">Dữ liệu Photobooth hiện có sẽ được thay bằng bản sao lưu này. {snapshot.version === 1 && 'Bản sao lưu cũ không có lịch sử tiền máy PTB; phần này sẽ được làm trống. '}Dữ liệu thuê camera không bị tác động. Nếu file lỗi, hệ thống giữ nguyên dữ liệu hiện tại.</div><label>Nhập <strong>KHOI PHUC</strong> để xác nhận<input value={phrase} onChange={e => setPhrase(e.target.value)} autoFocus /></label>{error && <div className="pb-error">{error}</div>}<div className="pb-form-actions"><button onClick={() => { setSnapshot(null); setError(''); }}>Hủy</button><button className="pb-primary" onClick={restoreBackup} disabled={busy || phrase !== 'KHOI PHUC'}>{busy ? 'Đang khôi phục...' : 'Khôi phục Photobooth'}</button></div></div></div>}
   </>;
 }
 
@@ -76,10 +77,56 @@ export function CashPanel({ date, data, staff, refresh, setError }) {
   }
   return <>
     <div className="pb-notice">Tiền chuyển khoản không vào két. Đổi mệnh giá chỉ ghi lịch sử, không tăng hoặc giảm tổng tiền mặt. Thu/chi quỹ không tính là doanh thu bán hàng.</div>
-    <div className="pb-stat-grid">{[['Tiền đầu ca/ngày', s.opening], ['Tiền mặt từ đơn', s.salesCash], ['Thu/chi quỹ khác', s.otherMoves], ['Dự kiến trong két', s.expected]].map(([label, value]) => <div className="pb-stat" key={label}><small>{label}</small><strong>{money(value)}</strong></div>)}</div>
+    <div className="pb-stat-grid pb-finance-stats">{[['Tiền đầu ca/ngày', s.opening], ['Tiền mặt từ đơn (+/−)', s.salesCash], ['Thu/chi quỹ khác', s.otherMoves], ['Lấy từ máy PTB', s.machineCollected], ['Dự kiến trong két', s.expected]].map(([label, value]) => <div className="pb-stat" key={label}><small>{label}</small><strong>{money(value)}</strong></div>)}</div>
+    <div className="pb-notice">Tiền quầy dự kiến = đầu ca + tiền mặt từ đơn (gồm khoản đổi tiền vào máy) + thu/chi quỹ + tiền lấy từ máy đưa về quầy.</div>
     <div className="pb-grid-two"><section className="pb-card"><h3>Ghi nhận thu / chi / đổi tiền</h3><form className="pb-inline-form" onSubmit={submitMove}><label>Loại giao dịch<select value={move.type} onChange={e => setMove({ ...move, type: e.target.value })}>{Object.entries(movement).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label><label>Số tiền (₫)<input type="number" min="0" step="1" required value={move.amount} onChange={e => setMove({ ...move, amount: e.target.value })} /></label><label>Nhân viên<select value={move.staff_id} onChange={e => setMove({ ...move, staff_id: e.target.value })}><option value="">Không chọn</option>{staff.filter(x => x.active).map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label><label className="pb-wide">Ghi chú<input value={move.note} onChange={e => setMove({ ...move, note: e.target.value })} placeholder="Ví dụ: đổi 500.000đ thành tiền lẻ" /></label><button className="pb-primary pb-wide" disabled={busy}><Plus size={15} /> Lưu giao dịch quỹ</button></form></section>
       <section className="pb-card"><h3>Chốt quỹ cuối ngày</h3><form className="pb-inline-form" onSubmit={submitClose}><label>Tiền đếm thực tế (₫)<input type="number" min="0" step="1" required value={close.actual_amount} onChange={e => setClose({ ...close, actual_amount: e.target.value })} /></label><label>Người chốt<select value={close.staff_id} onChange={e => setClose({ ...close, staff_id: e.target.value })}><option value="">Không chọn</option>{staff.filter(x => x.active).map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label><label className="pb-wide">Ghi chú chênh lệch<input value={close.note} onChange={e => setClose({ ...close, note: e.target.value })} /></label><div className="pb-wide pb-form-total">Dự kiến trong két <strong>{money(s.expected)}</strong></div><button className="pb-primary pb-wide" disabled={busy}>Lưu chốt quỹ</button></form></section></div>
     <div className="pb-grid-two"><section className="pb-card"><h3>Lịch sử giao dịch quỹ</h3><CellTable headers={['Loại', 'Số tiền', 'Nhân viên', 'Ghi chú', '']} rows={(data?.movements || []).map(item => [movement[item.type], money(item.amount), item.staff_name || '—', item.note || '—', <button className="pb-link-danger" onClick={() => remove(item.id)} aria-label="Hủy bút toán"><Trash2 size={15} /></button>])} /></section><section className="pb-card"><h3>Lịch sử chốt quỹ</h3><CellTable headers={['Thời điểm', 'Dự kiến', 'Thực tế', 'Chênh lệch']} rows={(data?.closures || []).map(item => [new Date(item.created_at).toLocaleString('vi-VN'), money(item.expected_amount), money(item.actual_amount), <strong className={Number(item.difference_amount) < 0 ? 'pb-alert-text' : ''}>{money(item.difference_amount)}</strong>])} /></section></div>
+  </>;
+}
+
+export function PtbPanel({ date, data, staff, refresh, setError }) {
+  const [move, setMove] = useState({ type: 'opening', destination: 'counter', amount: '', staff_id: '', note: '' });
+  const [count, setCount] = useState({ actual_amount: '', staff_id: '', note: '' });
+  const [busy, setBusy] = useState(false);
+  const machine = data?.machine || {};
+  const counter = data?.counter || {};
+  const sources = data?.sources || {};
+  const rows = Object.entries(sourceModes).map(([key, label]) => {
+    const item = sources[key] || {};
+    return [label, item.orders || 0, money(item.revenue), money(item.counter_change), money(key === 'counter' ? 0 : item.revenue), money(item.transfer)];
+  });
+  async function submitMove(event) {
+    event.preventDefault(); setBusy(true); setError('');
+    try { await photoboothApi.createMachineMovement({ ...move, movement_date: date }); setMove({ ...move, amount: '', note: '' }); await refresh(); }
+    catch (error) { setError(errorText(error)); } finally { setBusy(false); }
+  }
+  async function submitCount(event) {
+    event.preventDefault(); setBusy(true); setError('');
+    try { await photoboothApi.countMachineCash({ ...count, count_date: date }); setCount({ ...count, actual_amount: '', note: '' }); await refresh(); }
+    catch (error) { setError(errorText(error)); } finally { setBusy(false); }
+  }
+  async function removeMove(id) {
+    if (!window.confirm('Hủy giao dịch tiền máy PTB này? Báo cáo sẽ tính lại và lịch sử vẫn được lưu.')) return;
+    try { await photoboothApi.voidMachineMovement(id); await refresh(); }
+    catch (error) { setError(errorText(error)); }
+  }
+  function exportReport() {
+    downloadCsv(`Insphoto_doi_soat_PTB_${date}.csv`, [
+      ['ĐỐI SOÁT MÁY PTB VÀ QUẦY', date], ['Doanh thu PTB', Number(sources.machine_self?.revenue || 0) + Number(sources.machine_exchange?.revenue || 0)], ['Doanh thu bán thêm', sources.counter?.revenue || 0], ['Tổng doanh thu', data?.totals?.revenue || 0], ['Chuyển khoản từ đơn', data?.totals?.transfer || 0], ['Dự kiến trong máy', machine.expected || 0], ['Dự kiến tại quầy', counter.expected || 0], [],
+      ['Nguồn thu', 'Số đơn', 'Doanh thu', 'Biến động quầy', 'Tiền vào máy', 'Chuyển khoản'], ...Object.entries(sourceModes).map(([key, label]) => { const item = sources[key] || {}; return [label, item.orders || 0, item.revenue || 0, item.counter_change || 0, key === 'counter' ? 0 : item.revenue || 0, item.transfer || 0]; }), [],
+      ['Ngày', 'Loại giao dịch máy', 'Số tiền', 'Đích đến', 'Nhân viên', 'Ghi chú'], ...(data?.movements || []).map(item => [day(item.movement_date), item.type === 'opening' ? 'Đầu ngày' : 'Lấy tiền máy', item.amount, item.destination === 'counter' ? 'Quầy' : item.destination === 'bank' ? 'Ngân hàng' : '', item.staff_name, item.note])
+    ]);
+  }
+  return <>
+    <div className="pb-notice">Doanh thu PTB và doanh thu bán thêm được ghi nhận một lần khi tạo đơn. Lấy tiền từ máy hoặc đổi tiền chỉ làm thay đổi nơi giữ tiền, không cộng doanh thu lần hai.</div>
+    <div className="pb-actions pb-no-print"><button className="pb-secondary" onClick={exportReport}><Download size={15} /> Xuất đối soát CSV</button></div>
+    <div className="pb-stat-grid">{[['Doanh thu PTB', Number(sources.machine_self?.revenue || 0) + Number(sources.machine_exchange?.revenue || 0)], ['Doanh thu bán thêm', sources.counter?.revenue], ['Chuyển khoản từ đơn', data?.totals?.transfer], ['Tổng doanh thu', data?.totals?.revenue]].map(([label, value]) => <div className="pb-stat" key={label}><small>{label}</small><strong>{money(value)}</strong></div>)}</div>
+    <div className="pb-grid-two"><section className="pb-card"><h3>Tiền trong máy PTB</h3><div className="pb-reconcile-total">{money(machine.expected)}</div><p className="pb-muted">Đầu ngày {money(machine.opening)} + khách nạp {money(machine.incoming)} − đã lấy {money(machine.collected)}</p><p className="pb-muted">Đã chuyển về quầy {money(machine.collectedToCounter)} · Nộp ngân hàng {money(machine.collectedToBank)}</p></section><section className="pb-card"><h3>Tiền mặt tại quầy</h3><div className="pb-reconcile-total">{money(counter.expected)}</div><p className="pb-muted">Đầu ngày {money(counter.opening)} + tiền từ đơn {money(counter.salesCash)} + thu/chi {money(counter.otherMoves)} + lấy từ máy {money(counter.machineCollected)}</p></section></div>
+    <div className="pb-grid-two"><section className="pb-card"><h3>Tiền đầu ngày / lấy tiền máy</h3><form className="pb-inline-form" onSubmit={submitMove}><label>Loại giao dịch<select value={move.type} onChange={e => setMove({ ...move, type: e.target.value })}><option value="opening">Tiền đầu ngày trong máy</option><option value="collect">Lấy tiền ra khỏi máy</option></select></label><label>Số tiền (₫)<input type="number" min="1" step="1" required value={move.amount} onChange={e => setMove({ ...move, amount: e.target.value })} /></label>{move.type === 'collect' && <label>Tiền chuyển đến<select value={move.destination} onChange={e => setMove({ ...move, destination: e.target.value })}><option value="counter">Quỹ tiền mặt tại quầy</option><option value="bank">Ngân hàng</option></select></label>}<label>Nhân viên<select value={move.staff_id} onChange={e => setMove({ ...move, staff_id: e.target.value })}><option value="">Không chọn</option>{staff.filter(item => item.active).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label className="pb-wide">Ghi chú<input value={move.note} onChange={e => setMove({ ...move, note: e.target.value })} placeholder="Ví dụ: lấy tiền máy cuối ca" /></label><button className="pb-primary pb-wide" disabled={busy}><Plus size={15} /> Ghi nhận</button></form></section>
+      <section className="pb-card"><h3>Kiểm đếm tiền trong máy</h3><form className="pb-inline-form" onSubmit={submitCount}><label>Tiền đếm thực tế (₫)<input type="number" min="0" step="1" required value={count.actual_amount} onChange={e => setCount({ ...count, actual_amount: e.target.value })} /></label><label>Người kiểm đếm<select value={count.staff_id} onChange={e => setCount({ ...count, staff_id: e.target.value })}><option value="">Không chọn</option>{staff.filter(item => item.active).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label className="pb-wide">Ghi chú chênh lệch<input value={count.note} onChange={e => setCount({ ...count, note: e.target.value })} /></label><div className="pb-wide pb-form-total">Dự kiến trong máy <strong>{money(machine.expected)}</strong></div><button className="pb-primary pb-wide" disabled={busy}>Lưu kiểm đếm</button></form></section></div>
+    <section className="pb-card"><h3>Doanh thu và dòng tiền theo nguồn</h3><CellTable headers={['Nguồn thu', 'Số đơn', 'Doanh thu', 'Quầy +/−', 'Máy +', 'Chuyển khoản']} rows={rows} /></section>
+    <div className="pb-grid-two"><section className="pb-card"><h3>Lịch sử tiền máy</h3><CellTable headers={['Loại', 'Số tiền', 'Đích đến', 'Nhân viên', 'Ghi chú', '']} rows={(data?.movements || []).map(item => [item.type === 'opening' ? 'Đầu ngày' : 'Lấy tiền máy', money(item.amount), item.destination === 'counter' ? 'Quầy' : item.destination === 'bank' ? 'Ngân hàng' : '—', item.staff_name || '—', item.note || '—', <button className="pb-link-danger pb-no-print" onClick={() => removeMove(item.id)} aria-label="Hủy giao dịch tiền máy"><Trash2 size={15} /></button>])} /></section><section className="pb-card"><h3>Lịch sử kiểm đếm</h3><CellTable headers={['Thời điểm', 'Dự kiến', 'Thực tế', 'Chênh lệch']} rows={(data?.counts || []).map(item => [new Date(item.created_at).toLocaleString('vi-VN'), money(item.expected_amount), money(item.actual_amount), <strong className={Number(item.difference_amount) < 0 ? 'pb-alert-text' : ''}>{money(item.difference_amount)}</strong>])} /></section></div>
   </>;
 }
 
@@ -88,36 +135,38 @@ export function CustomersPanel({ customers }) {
   return <><div className="pb-notice">Chỉ xuất số điện thoại để marketing khi khách đã đồng ý lúc tạo đơn. Danh sách này lấy từ đơn Photobooth, không dùng dữ liệu khách thuê camera.</div><div className="pb-actions"><button className="pb-primary" onClick={() => downloadCsv('Insphoto_khach_dong_y_MKT.csv', [['Tên khách', 'Số điện thoại'], ...consented.map(item => [item.name, item.phone])])}><Download size={15} /> Xuất {consented.length} khách đồng ý MKT</button></div><section className="pb-card"><CellTable headers={['Khách hàng', 'Số điện thoại', 'Số đơn', 'Đơn gần nhất', 'Nhận MKT']} rows={customers.map(item => [item.name || 'Khách lẻ', item.phone, item.orders, day(item.last_order_date), item.marketing_consent ? 'Đã đồng ý' : 'Chưa đồng ý'])} /></section></>;
 }
 
-export function OrderForm({ form, setForm, services, staff, gifts, busy, onSave, onCancel }) {
+export function OrderForm({ form, setForm, services, staff, gifts, busy, onSave, onCancel, resetLabel = 'Hủy' }) {
+  const sourceMode = form.source_mode || 'counter';
   const selected = services.find(item => String(item.id) === String(form.service_id));
   const subtotal = Number(form.unit_price || 0) * Number(form.quantity || 0);
   const total = Math.max(0, subtotal - Number(form.discount_amount || 0));
   const cash = Number(form.cash_received || 0);
   const transfer = Number(form.transfer_received || 0);
-  const change = Math.max(0, cash + transfer - total);
-  const missing = Math.max(0, total - cash - transfer);
-  const cashInDrawer = Math.max(0, cash - change);
-  const invalidTransfer = transfer > total;
+  const change = sourceMode === 'counter' ? Math.max(0, cash + transfer - total) : 0;
+  const missing = sourceMode === 'counter' ? Math.max(0, total - cash - transfer) : 0;
+  const cashInDrawer = sourceMode === 'machine_exchange' ? -total : sourceMode === 'machine_self' ? 0 : cash - change;
+  const invalidTransfer = sourceMode === 'counter' && transfer > total;
   const update = (key, value) => setForm(current => ({ ...current, [key]: value }));
   return <form className="pb-inline-form pb-order-form" onSubmit={onSave}>
+    <div className="pb-wide pb-notice"><strong>Chọn nguồn thu trước khi lưu.</strong> Tiền khách đưa vào máy PTB được theo dõi riêng với tiền tại quầy. Đổi tiền qua chuyển khoản chỉ ghi doanh thu một lần.</div>
     <label>Ngày đơn hàng *<input type="date" required value={form.sale_date || ''} onChange={e => update('sale_date', e.target.value)} /></label>
     <label>Khách hàng<input value={form.customer_name || ''} onChange={e => update('customer_name', e.target.value)} placeholder="Khách lẻ" /></label>
     <label>Số điện thoại<input type="tel" value={form.customer_phone || ''} onChange={e => update('customer_phone', e.target.value)} placeholder="09xxxxxxxx" /></label>
+    <label className="pb-wide">Nguồn thu / quy trình thanh toán<select value={sourceMode} onChange={e => setForm(current => ({ ...current, source_mode: e.target.value, cash_received: 0, transfer_received: 0 }))}>{Object.entries(sourceModes).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
     <label>Dịch vụ *<select required value={form.service_id || ''} onChange={e => { const item = services.find(x => String(x.id) === e.target.value); setForm(current => ({ ...current, service_id: e.target.value, unit_price: item?.price || '' })); }}><option value="">Chọn dịch vụ</option>{services.filter(item => item.active).map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
     <label>Số lượng *<input type="number" min="1" step="1" required value={form.quantity} onChange={e => update('quantity', e.target.value)} /></label>
     <label>Đơn giá (₫) *<input type="number" min="0" step="1" required value={form.unit_price} onChange={e => update('unit_price', e.target.value)} placeholder={selected ? String(selected.price) : ''} /></label>
     <label>Giảm giá (₫)<input type="number" min="0" step="1" value={form.discount_amount} onChange={e => update('discount_amount', e.target.value)} /></label>
-    <label>Tiền mặt khách đưa (₫)<input type="number" min="0" step="1" value={form.cash_received} onChange={e => update('cash_received', e.target.value)} /></label>
-    <label>Khách chuyển khoản (₫)<input type="number" min="0" step="1" value={form.transfer_received} onChange={e => update('transfer_received', e.target.value)} /></label>
-    <label>Nhân viên thu tiền<select value={form.staff_id || ''} onChange={e => update('staff_id', e.target.value)}><option value="">Chưa chọn</option>{staff.filter(item => item.active).map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
+    {sourceMode === 'counter' && <><label>Tiền mặt khách đưa (₫)<input type="number" min="0" step="1" value={form.cash_received} onChange={e => update('cash_received', e.target.value)} /></label><label>Khách chuyển khoản (₫)<input type="number" min="0" step="1" value={form.transfer_received} onChange={e => update('transfer_received', e.target.value)} /></label></>}
+    <label>Nhân viên phụ trách *<select required value={form.staff_id || ''} onChange={e => update('staff_id', e.target.value)}><option value="">Chọn nhân viên</option>{staff.filter(item => item.active).map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
     <label>Ca làm<select value={form.shift_label || ''} onChange={e => update('shift_label', e.target.value)}><option>Ca sáng</option><option>Ca chiều</option><option>Ca tối</option><option>Khác</option></select></label>
     <label>Số khách<input type="number" min="0" step="1" value={form.customer_count} onChange={e => update('customer_count', e.target.value)} /></label>
     <label>Quà tặng<select value={form.gift_id || ''} onChange={e => update('gift_id', e.target.value)}><option value="">Không tặng</option>{gifts.filter(item => item.active && item.quantity > 0).map(item => <option value={item.id} key={item.id}>{item.name} · còn {item.quantity}</option>)}</select></label>
     <label>Số quà<input type="number" min="0" step="1" value={form.gift_quantity} onChange={e => update('gift_quantity', e.target.value)} /></label>
     <label>Nguồn khách<select value={form.customer_source || ''} onChange={e => update('customer_source', e.target.value)}><option value="walk_in">Khách vãng lai</option><option value="social">Mạng xã hội</option><option value="referral">Giới thiệu</option><option value="other">Khác</option></select></label>
     <label className="pb-check pb-wide"><input type="checkbox" checked={Boolean(form.marketing_consent)} onChange={e => update('marketing_consent', e.target.checked)} /> Khách đồng ý nhận thông tin ưu đãi / marketing</label>
-    <div className="pb-wide pb-order-calc"><strong>Thành tiền: {money(total)}</strong><span>Tiền thối khách: {money(change)} · Còn thiếu: {money(missing)}</span><span>Tiền mặt thực vào quầy: {money(cashInDrawer)}</span>{invalidTransfer && <span className="pb-alert-text">Tiền chuyển khoản không được vượt thành tiền.</span>}</div>
-    <div className="pb-form-actions pb-wide"><button type="button" onClick={onCancel}>Hủy</button><button className="pb-primary" disabled={busy || missing > 0 || invalidTransfer || Number(form.discount_amount) > subtotal}>{busy ? 'Đang lưu...' : 'Lưu đơn hàng'}</button></div>
+    <div className="pb-wide pb-order-calc"><strong>Doanh thu ghi nhận một lần: {money(total)}</strong>{sourceMode === 'counter' ? <><span>Tiền thối khách: {money(change)} · Còn thiếu: {money(missing)}</span><span>Tiền mặt thực vào quầy: {money(cashInDrawer)}</span></> : sourceMode === 'machine_self' ? <span>Khách tự bỏ {money(total)} vào máy · Quầy: {money(0)} · Máy: +{money(total)}</span> : <span>Khách chuyển khoản {money(total)}; thu ngân đưa tiền mặt vào máy · Quầy: {money(cashInDrawer)} · Máy: +{money(total)} · Ngân hàng: +{money(total)}</span>}{invalidTransfer && <span className="pb-alert-text">Tiền chuyển khoản không được vượt thành tiền.</span>}</div>
+    <div className="pb-form-actions pb-wide"><button type="button" onClick={onCancel}>{resetLabel}</button><button className="pb-primary" disabled={busy || total <= 0 || missing > 0 || invalidTransfer || Number(form.discount_amount) > subtotal}>{busy ? 'Đang lưu...' : 'Lưu đơn hàng'}</button></div>
   </form>;
 }
 
@@ -128,11 +177,12 @@ export function ReportsPanel({ from, to, setFrom, setTo, report, orders }) {
   const cash = daily.reduce((sum, item) => sum + Number(item.cash), 0);
   const transfer = daily.reduce((sum, item) => sum + Number(item.transfer), 0);
   function exportOrders() {
-    downloadCsv(`Insphoto_don_hang_${from}_${to}.csv`, [['Ngày', 'Khách hàng', 'SĐT', 'Dịch vụ', 'SL', 'Đơn giá', 'Giảm giá', 'Doanh thu', 'Tiền mặt thực', 'Chuyển khoản', 'Nhân viên', 'Đồng ý MKT', 'Trạng thái'], ...orders.map(item => [day(item.sale_date), item.customer_name, item.customer_phone, item.service_name, item.quantity, item.unit_price, item.discount_amount, item.total_amount, item.cash_in_drawer, item.transfer_received, item.staff_name, item.marketing_consent ? 'Có' : 'Không', item.status === 'voided' ? 'Đã hủy' : 'Hoàn tất'])]);
+    downloadCsv(`Insphoto_don_hang_${from}_${to}.csv`, [['Ngày', 'Nguồn thu', 'Khách hàng', 'SĐT', 'Dịch vụ', 'SL', 'Đơn giá', 'Giảm giá', 'Doanh thu', 'Quầy +/−', 'Máy +', 'Chuyển khoản', 'Nhân viên', 'Đồng ý MKT', 'Trạng thái'], ...orders.map(item => [day(item.sale_date), sourceModes[item.source_mode] || sourceModes.counter, item.customer_name, item.customer_phone, item.service_name, item.quantity, item.unit_price, item.discount_amount, item.total_amount, item.cash_in_drawer, item.source_mode === 'machine_self' || item.source_mode === 'machine_exchange' ? item.total_amount : 0, item.transfer_received, item.staff_name, item.marketing_consent ? 'Có' : 'Không', item.status === 'voided' ? 'Đã hủy' : 'Hoàn tất'])]);
   }
   return <><div className="pb-report-filter pb-no-print"><label>Từ ngày <input type="date" value={from} onChange={e => setFrom(e.target.value)} /></label><label>Đến ngày <input type="date" value={to} onChange={e => setTo(e.target.value)} /></label><button className="pb-secondary" onClick={exportOrders}><Download size={15} /> Xuất đơn CSV</button><button className="pb-secondary" onClick={() => window.print()}><Printer size={15} /> In báo cáo</button></div>
-    <div className="pb-stat-grid">{[['Doanh thu', revenue], ['Số đơn', count], ['Tiền mặt thu thực', cash], ['Chuyển khoản', transfer]].map(([label, value], i) => <div className="pb-stat" key={label}><small>{label}</small><strong>{i === 1 ? value : money(value)}</strong></div>)}</div>
-    <section className="pb-card"><h3>Doanh thu theo ngày</h3><CellTable headers={['Ngày', 'Số đơn', 'Doanh thu', 'Tiền mặt thực', 'Chuyển khoản']} rows={daily.map(item => [day(item.day), item.transactions, money(item.revenue), money(item.cash), money(item.transfer)])} /></section>
+    <div className="pb-stat-grid">{[['Doanh thu', revenue], ['Số đơn', count], ['Biến động tiền quầy', cash], ['Chuyển khoản', transfer]].map(([label, value], i) => <div className="pb-stat" key={label}><small>{label}</small><strong>{i === 1 ? value : money(value)}</strong></div>)}</div>
+    <section className="pb-card"><h3>Doanh thu theo ngày</h3><CellTable headers={['Ngày', 'Số đơn', 'Doanh thu', 'Quầy +/−', 'Chuyển khoản']} rows={daily.map(item => [day(item.day), item.transactions, money(item.revenue), money(item.cash), money(item.transfer)])} /></section>
+    <section className="pb-card"><h3>Doanh thu theo nguồn thu</h3><CellTable headers={['Nguồn thu', 'Số đơn', 'Doanh thu', 'Quầy +/−', 'Chuyển khoản']} rows={(report?.sources || []).map(item => [sourceModes[item.source_mode] || sourceModes.counter, item.transactions, money(item.revenue), money(item.counter_change), money(item.transfer)])} /></section>
     <div className="pb-grid-two"><section className="pb-card"><h3>Doanh thu theo dịch vụ</h3><CellTable headers={['Dịch vụ', 'Số lượng', 'Doanh thu']} rows={(report?.services || []).map(item => [item.service_name, item.quantity, money(item.revenue)])} /></section><section className="pb-card"><h3>Loại thanh toán</h3><CellTable headers={['Phương thức', 'Số đơn', 'Doanh thu']} rows={(report?.payments || []).map(item => [({ cash: 'Tiền mặt', transfer: 'Chuyển khoản', mixed: 'Tiền mặt + CK', card: 'Thẻ' })[item.payment_method] || item.payment_method, item.transactions, money(item.revenue)])} /></section></div>
   </>;
 }

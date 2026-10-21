@@ -575,6 +575,9 @@ ALTER TABLE pb_transactions ADD COLUMN IF NOT EXISTS marketing_consent BOOLEAN N
 ALTER TABLE pb_transactions ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'completed';
 ALTER TABLE pb_transactions ADD COLUMN IF NOT EXISTS void_reason TEXT;
 ALTER TABLE pb_transactions ADD COLUMN IF NOT EXISTS voided_at TIMESTAMPTZ;
+ALTER TABLE pb_transactions ADD COLUMN IF NOT EXISTS source_mode VARCHAR(24) NOT NULL DEFAULT 'counter';
+ALTER TABLE pb_transactions DROP CONSTRAINT IF EXISTS pb_transactions_source_mode_check;
+ALTER TABLE pb_transactions ADD CONSTRAINT pb_transactions_source_mode_check CHECK (source_mode IN ('counter','machine_self','machine_exchange'));
 ALTER TABLE pb_shifts ADD COLUMN IF NOT EXISTS label VARCHAR(40);
 ALTER TABLE pb_shifts DROP CONSTRAINT IF EXISTS pb_shifts_status_check;
 ALTER TABLE pb_shifts ADD CONSTRAINT pb_shifts_status_check CHECK (status IN ('scheduled','working','done','cancelled'));
@@ -608,6 +611,31 @@ CREATE TABLE IF NOT EXISTS pb_cash_closures (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_pb_cash_closures_date ON pb_cash_closures(close_date);
+CREATE TABLE IF NOT EXISTS pb_machine_movements (
+  id SERIAL PRIMARY KEY,
+  movement_date DATE NOT NULL,
+  type VARCHAR(20) NOT NULL CHECK (type IN ('opening','collect')),
+  destination VARCHAR(20) CHECK (destination IN ('counter','bank')),
+  amount NUMERIC(12,2) NOT NULL CHECK (amount > 0),
+  staff_id INTEGER REFERENCES pb_staff(id),
+  note TEXT,
+  voided_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK ((type='opening' AND destination IS NULL) OR (type='collect' AND destination IS NOT NULL))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pb_machine_one_opening ON pb_machine_movements(movement_date) WHERE type='opening' AND voided_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_pb_machine_movements_date ON pb_machine_movements(movement_date);
+CREATE TABLE IF NOT EXISTS pb_machine_counts (
+  id SERIAL PRIMARY KEY,
+  count_date DATE NOT NULL,
+  expected_amount NUMERIC(12,2) NOT NULL,
+  actual_amount NUMERIC(12,2) NOT NULL CHECK (actual_amount >= 0),
+  difference_amount NUMERIC(12,2) NOT NULL,
+  staff_id INTEGER REFERENCES pb_staff(id),
+  note TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_pb_machine_counts_date ON pb_machine_counts(count_date);
 CREATE TABLE IF NOT EXISTS pb_expenses (
   id SERIAL PRIMARY KEY,
   expense_date DATE NOT NULL,

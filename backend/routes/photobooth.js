@@ -80,12 +80,15 @@ router.get('/overview', run(async (req, res) => {
 router.get('/reports', run(async (req, res) => {
   const { from, to } = req.query;
   if (!validDate(from) || !validDate(to) || from > to) return fail(res, 'Khoảng ngày không hợp lệ.');
-  const [daily, services, payments] = await Promise.all([
+  const [daily, services, payments, sources] = await Promise.all([
     pool.query(`SELECT sale_date::text AS day, COUNT(*)::int AS transactions, COALESCE(SUM(customer_count),0)::int AS customers, SUM(total_amount)::float AS revenue, SUM(cash_in_drawer)::float AS cash, SUM(transfer_received)::float AS transfer FROM pb_transactions WHERE sale_date BETWEEN $1::date AND $2::date AND status='completed' GROUP BY sale_date ORDER BY sale_date`, [from, to]),
     pool.query(`SELECT service_name, category, COALESCE(SUM(quantity),0)::int AS quantity, SUM(total_amount)::float AS revenue FROM pb_transactions WHERE sale_date BETWEEN $1::date AND $2::date AND status='completed' GROUP BY service_name,category ORDER BY revenue DESC`, [from, to]),
-    pool.query(`SELECT payment_method, COUNT(*)::int AS transactions, SUM(total_amount)::float AS revenue FROM pb_transactions WHERE sale_date BETWEEN $1::date AND $2::date AND status='completed' GROUP BY payment_method`, [from, to])
+    pool.query(`SELECT payment_method, COUNT(*)::int AS transactions, SUM(total_amount)::float AS revenue FROM pb_transactions WHERE sale_date BETWEEN $1::date AND $2::date AND status='completed' GROUP BY payment_method`, [from, to]),
+    pool.query(`SELECT source_mode,COUNT(*)::int AS transactions,SUM(total_amount)::float AS revenue,
+      SUM(cash_in_drawer)::float AS counter_change,SUM(transfer_received)::float AS transfer
+      FROM pb_transactions WHERE sale_date BETWEEN $1::date AND $2::date AND status='completed' GROUP BY source_mode`, [from, to])
   ]);
-  res.json({ daily: daily.rows, services: services.rows, payments: payments.rows });
+  res.json({ daily: daily.rows, services: services.rows, payments: payments.rows, sources: sources.rows });
 }));
 
 router.get('/transactions', run(async (req, res) => {
@@ -105,6 +108,8 @@ router.post('/transactions', run(async (req, res) => {
   if (!validDate(saleDate)) return fail(res, 'Ngày đơn hàng không hợp lệ.');
   if (body.customer_count != null && (!Number.isInteger(Number(body.customer_count)) || Number(body.customer_count) < 0)) return fail(res, 'Số khách không hợp lệ.');
   if (body.customer_source && !['walk_in', 'social', 'referral', 'other'].includes(body.customer_source)) return fail(res, 'Nguồn khách không hợp lệ.');
+  const sourceMode = body.source_mode || 'counter';
+  if (!['counter', 'machine_self', 'machine_exchange'].includes(sourceMode)) return fail(res, 'Nguồn thu không hợp lệ.');
   if (body.staff_id && !positiveId(body.staff_id)) return fail(res, 'Nhân viên không hợp lệ.');
   if (body.marketing_consent != null && typeof body.marketing_consent !== 'boolean') return fail(res, 'Đồng ý marketing không hợp lệ.');
   if (body.customer_phone && !/^[0-9+().\s-]{8,30}$/.test(body.customer_phone)) return fail(res, 'Số điện thoại không hợp lệ.');
@@ -120,23 +125,28 @@ router.post('/transactions', run(async (req, res) => {
     const subtotal = unitPrice * Number(body.quantity);
     if (!wholeMoney(unitPrice) || !wholeMoney(discount) || !Number.isSafeInteger(subtotal) || discount > subtotal) { await client.query('ROLLBACK'); return fail(res, 'Đơn giá hoặc giảm giá không hợp lệ.'); }
     const total = subtotal - discount;
+    if (sourceMode !== 'counter' && total <= 0) { await client.query('ROLLBACK'); return fail(res, 'Đơn PTB phải có doanh thu lớn hơn 0.'); }
     // Legacy callers may still send a single payment_method. New orders use
     // explicit cash and transfer amounts so drawer reconciliation is exact.
     const cash = body.cash_received == null && body.transfer_received == null && body.payment_method === 'cash' ? total : Number(body.cash_received ?? 0);
     const transfer = body.cash_received == null && body.transfer_received == null && body.payment_method === 'transfer' ? total : Number(body.transfer_received ?? 0);
     const legacyCard = body.cash_received == null && body.transfer_received == null && body.payment_method === 'card';
-    if (!wholeMoney(cash) || !wholeMoney(transfer) || transfer > total || (!legacyCard && cash + transfer < total)) { await client.query('ROLLBACK'); return fail(res, 'Khách chưa thanh toán đủ hoặc số tiền nhập không hợp lệ.'); }
-    const change = legacyCard ? 0 : cash + transfer - total;
-    const cashInDrawer = cash - change;
-    const paymentMethod = legacyCard ? 'card' : cashInDrawer > 0 && transfer > 0 ? 'mixed' : transfer > 0 ? 'transfer' : 'cash';
+    if (sourceMode === 'counter' && (!wholeMoney(cash) || !wholeMoney(transfer) || transfer > total || (!legacyCard && cash + transfer < total))) { await client.query('ROLLBACK'); return fail(res, 'Khách chưa thanh toán đủ hoặc số tiền nhập không hợp lệ.'); }
+    if (sourceMode !== 'counter' && (body.cash_received != null && Number(body.cash_received) !== 0 || body.transfer_received != null && Number(body.transfer_received) !== 0)) { await client.query('ROLLBACK'); return fail(res, 'Đơn PTB được tính tiền theo nguồn thu đã chọn.'); }
+    const change = sourceMode === 'counter' && !legacyCard ? cash + transfer - total : 0;
+    const cashInDrawer = sourceMode === 'machine_exchange' ? -total : sourceMode === 'machine_self' ? 0 : cash - change;
+    const recordedCash = sourceMode === 'counter' ? cash : 0;
+    const recordedTransfer = sourceMode === 'machine_exchange' ? total : sourceMode === 'counter' ? transfer : 0;
+    const paymentMethod = sourceMode === 'machine_self' ? 'cash' : sourceMode === 'machine_exchange' ? 'transfer' : legacyCard ? 'card' : cashInDrawer > 0 && transfer > 0 ? 'mixed' : transfer > 0 ? 'transfer' : 'cash';
+    if (sourceMode !== 'counter' && !body.staff_id) { await client.query('ROLLBACK'); return fail(res, 'Vui lòng chọn nhân viên phụ trách đơn PTB.'); }
     if (body.staff_id && !(await client.query('SELECT 1 FROM pb_staff WHERE id=$1 AND active=true', [body.staff_id])).rowCount) { await client.query('ROLLBACK'); return fail(res, 'Nhân viên không hợp lệ.'); }
     if (giftQuantity > 0) {
       const updated = await client.query('UPDATE pb_gifts SET quantity=quantity-$1 WHERE id=$2 AND active=true AND quantity >= $1 RETURNING id', [giftQuantity, body.gift_id]);
       if (!updated.rowCount) { await client.query('ROLLBACK'); return fail(res, 'Quà tặng không đủ tồn kho.'); }
     }
-    const result = await client.query(`INSERT INTO pb_transactions(service_id,service_name,category,quantity,unit_price,total_amount,payment_method,staff_id,customer_source,customer_count,gift_id,gift_quantity,note,sale_date,customer_name,customer_phone,discount_amount,cash_received,transfer_received,cash_in_drawer,change_amount,shift_label,marketing_consent)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) RETURNING *`,
-      [service.id, service.name, service.category, Number(body.quantity), unitPrice, total, paymentMethod, body.staff_id || null, body.customer_source || null, Number(body.customer_count ?? 1), giftQuantity ? body.gift_id : null, giftQuantity, clean(body.note, 1000) || null, saleDate, clean(body.customer_name) || 'Khách lẻ', clean(body.customer_phone, 30) || null, discount, cash, transfer, cashInDrawer, change, clean(body.shift_label, 40) || null, Boolean(body.marketing_consent)]);
+    const result = await client.query(`INSERT INTO pb_transactions(service_id,service_name,category,quantity,unit_price,total_amount,payment_method,staff_id,customer_source,customer_count,gift_id,gift_quantity,note,sale_date,customer_name,customer_phone,discount_amount,cash_received,transfer_received,cash_in_drawer,change_amount,shift_label,marketing_consent,source_mode)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING *`,
+      [service.id, service.name, service.category, Number(body.quantity), unitPrice, total, paymentMethod, body.staff_id || null, body.customer_source || null, Number(body.customer_count ?? 1), giftQuantity ? body.gift_id : null, giftQuantity, clean(body.note, 1000) || null, saleDate, clean(body.customer_name) || 'Khách lẻ', clean(body.customer_phone, 30) || null, discount, recordedCash, recordedTransfer, cashInDrawer, change, clean(body.shift_label, 40) || null, Boolean(body.marketing_consent), sourceMode]);
     if (giftQuantity) await client.query('INSERT INTO pb_gift_movements(gift_id,delta,reason,transaction_id) VALUES($1,$2,$3,$4)', [body.gift_id, -giftQuantity, 'Tặng khách', result.rows[0].id]);
     await client.query('COMMIT');
     res.status(201).json(result.rows[0]);

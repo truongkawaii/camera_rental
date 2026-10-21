@@ -4,10 +4,11 @@ import { ResponsiveContainer, AreaChart, Area, CartesianGrid, XAxis, Tooltip, Pi
 import { ArrowLeft, ArrowRight, CalendarDays, Camera, CreditCard, Gift, LayoutDashboard, Plus, ShoppingBag, Sparkles, TrendingUp, Users, Wallet, X } from 'lucide-react';
 import { photoboothApi } from '../api/client';
 import { useAuth } from '../context/AuthContext';
-import { BackupControls, CashPanel, CustomersPanel, FinancePanel, OrderForm, ReportsPanel } from './PhotoboothOperations';
+import { BackupControls, CashPanel, CustomersPanel, FinancePanel, OrderForm, PtbPanel, ReportsPanel, sourceModes } from './PhotoboothOperations';
 import './Photobooth.css';
 
 const vnDate = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+const newOrder = date => ({ sale_date: date, customer_name: '', customer_phone: '', source_mode: 'machine_self', service_id: '', quantity: 1, unit_price: '', discount_amount: 0, cash_received: 0, transfer_received: 0, marketing_consent: false, shift_label: 'Ca sáng', customer_count: 1, customer_source: 'walk_in', gift_id: '', gift_quantity: 0, staff_id: '' });
 const money = (value) => `${Number(value || 0).toLocaleString('vi-VN')} ₫`;
 const dayLabel = (date) => date ? new Date(`${String(date).slice(0, 10)}T00:00:00`).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }) : '';
 const categoryLabels = { shoot: 'Chụp ảnh', print: 'In ảnh', other: 'Khác' };
@@ -17,6 +18,7 @@ const tabs = [
   { key: 'overview', label: 'Tổng quan', icon: LayoutDashboard },
   { key: 'transactions', label: 'Thu tiền khách', icon: CreditCard },
   { key: 'cash', label: 'Tiền tại quầy', icon: Wallet },
+  { key: 'ptb', label: 'Đối soát máy PTB', icon: Camera },
   { key: 'customers', label: 'Khách hàng · MKT', icon: Users },
   { key: 'services', label: 'Bảng giá', icon: ShoppingBag },
   { key: 'gifts', label: 'Gấu bông · Quà tặng', icon: Gift },
@@ -72,6 +74,7 @@ export default function Photobooth() {
   const [report, setReport] = useState(null);
   const [reportOrders, setReportOrders] = useState([]);
   const [cashData, setCashData] = useState(null);
+  const [ptbData, setPtbData] = useState(null);
   const [customers, setCustomers] = useState([]);
   const [finance, setFinance] = useState(null);
   const [expenses, setExpenses] = useState([]);
@@ -79,7 +82,7 @@ export default function Photobooth() {
   const [reportFrom, setReportFrom] = useState(() => `${vnDate().slice(0, 7)}-01`);
   const [reportTo, setReportTo] = useState(vnDate());
   const [modal, setModal] = useState(null);
-  const [form, setForm] = useState({});
+  const [form, setForm] = useState(() => newOrder(vnDate()));
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -98,6 +101,9 @@ export default function Photobooth() {
       else if (tab === 'cash') {
         const [cash, people] = await Promise.all([photoboothApi.cash(date), photoboothApi.list('staff')]);
         setCashData(cash.data); setStaff(people.data);
+      } else if (tab === 'ptb') {
+        const [reconcile, people] = await Promise.all([photoboothApi.ptb(date), photoboothApi.list('staff')]);
+        setPtbData(reconcile.data); setStaff(people.data);
       } else if (tab === 'customers') setCustomers((await photoboothApi.customers()).data);
       else if (tab === 'finance') {
         const [summary, items, people] = await Promise.all([photoboothApi.finance(month), photoboothApi.expenses(month), photoboothApi.list('staff')]);
@@ -118,14 +124,14 @@ export default function Photobooth() {
   useEffect(() => { refresh(); }, [refresh]);
 
   function openCreate() {
-    setForm(tab === 'transactions' ? { sale_date: date, customer_name: '', customer_phone: '', service_id: '', quantity: 1, unit_price: '', discount_amount: 0, cash_received: 0, transfer_received: 0, marketing_consent: false, shift_label: 'Ca sáng', customer_count: 1, customer_source: 'walk_in', gift_id: '', gift_quantity: 0, staff_id: '' } : { ...configs[tab]?.defaults });
+    setForm({ ...configs[tab]?.defaults });
     setModal({ mode: 'create' });
   }
   function openEdit(row) { setForm({ ...row, work_date: row.work_date?.slice(0, 10), start_time: row.start_time?.slice(0, 5), end_time: row.end_time?.slice(0, 5) }); setModal({ mode: 'edit', id: row.id }); }
   async function save(event) {
     event.preventDefault(); setBusy(true); setError('');
     try {
-      if (tab === 'transactions') await photoboothApi.createTransaction(form);
+      if (tab === 'transactions') { await photoboothApi.createTransaction(form); setForm(newOrder(date)); }
       else if (modal.mode === 'edit') await photoboothApi.update(tab, modal.id, form);
       else await photoboothApi.create(tab, form);
       setModal(null); await refresh();
@@ -152,9 +158,9 @@ export default function Photobooth() {
     <nav className="pb-tabs" aria-label="Quản lý Photobooth">{tabs.map(item => { const Icon = item.icon; return <Link key={item.key} to={item.key === 'overview' ? '/photobooth' : `/photobooth/${item.key}`} className={`pb-tab ${tab === item.key ? 'active' : ''}`}><Icon size={17} /><span>{item.label}</span></Link>; })}</nav>
     <div className="pb-content">
       <div className="pb-section-head"><div><p className="pb-eyebrow">{tab === 'overview' ? 'DỮ LIỆU THỰC TẾ' : 'QUẢN LÝ PHOTOBOOTH'}</p><h2>{tab === 'overview' ? 'Tổng quan vận hành' : activeTitle}</h2><p>{tab === 'overview' ? 'Theo dõi hoạt động cửa hàng theo ngày.' : tab === 'reports' ? 'Doanh thu được tổng hợp từ giao dịch Photobooth.' : 'Dữ liệu ở đây chỉ thuộc khu Photobooth.'}</p></div><div className="pb-actions">
-        {['overview', 'transactions', 'cash'].includes(tab) && <label className="pb-date"><CalendarDays size={16} /><input type="date" value={date} onChange={event => setDate(event.target.value)} /></label>}
+        {['overview', 'transactions', 'cash', 'ptb'].includes(tab) && <label className="pb-date"><CalendarDays size={16} /><input type="date" value={date} onChange={event => { setDate(event.target.value); if (tab === 'transactions') setForm(current => ({ ...current, sale_date: event.target.value })); }} /></label>}
         {tab === 'finance' && <label className="pb-date"><CalendarDays size={16} /><input type="month" value={month} onChange={event => setMonth(event.target.value)} /></label>}
-        {!['overview', 'reports', 'finance', 'cash', 'customers'].includes(tab) && <button className="pb-primary" onClick={openCreate}><Plus size={17} /> {tab === 'transactions' ? 'Thu tiền khách' : 'Thêm mới'}</button>}
+        {!['overview', 'transactions', 'reports', 'finance', 'cash', 'ptb', 'customers'].includes(tab) && <button className="pb-primary" onClick={openCreate}><Plus size={17} /> Thêm mới</button>}
       </div></div>
       {error && <div className="pb-error" role="alert">{error}<button onClick={() => setError('')} aria-label="Đóng thông báo"><X size={15} /></button></div>}
       {loading ? <div className="pb-loading">Đang tải dữ liệu Photobooth...</div> : tab === 'overview' ? <>
@@ -163,21 +169,34 @@ export default function Photobooth() {
         </div>
         <div className="pb-grid-two"><section className="pb-card"><div className="pb-card-head"><div><h3>Doanh thu 7 ngày</h3><p>Giao dịch đã ghi nhận</p></div><TrendingUp size={18} /></div><div className="pb-chart"><ResponsiveContainer width="100%" height="100%"><AreaChart data={(data?.trend || []).map(item => ({ ...item, label: dayLabel(item.day) }))}><defs><linearGradient id="pbArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#eb70a6" stopOpacity={0.28}/><stop offset="100%" stopColor="#eb70a6" stopOpacity={0}/></linearGradient></defs><CartesianGrid stroke="#f4e9ee" vertical={false} /><XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: '#9e8793', fontSize: 11 }} /><Tooltip formatter={value => money(value)} /><Area type="monotone" dataKey="revenue" stroke="#e85496" strokeWidth={3} fill="url(#pbArea)" /></AreaChart></ResponsiveContainer></div></section>
           <section className="pb-card"><div className="pb-card-head"><div><h3>Cơ cấu dịch vụ</h3><p>Doanh thu trong ngày</p></div><ShoppingBag size={18} /></div>{data?.mix?.length ? <div className="pb-mix"><div className="pb-donut"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={data.mix} dataKey="revenue" innerRadius={55} outerRadius={78} paddingAngle={3}>{data.mix.map((_, i) => <Cell key={i} fill={['#e95c9b', '#8f77e8', '#f4b86e'][i % 3]} />)}</Pie><Tooltip formatter={value => money(value)} /></PieChart></ResponsiveContainer></div><div className="pb-mix-list">{data.mix.map((item, i) => <div key={item.category}><i style={{ background: ['#e95c9b', '#8f77e8', '#f4b86e'][i % 3] }} /><span>{categoryLabels[item.category] || item.category}</span><strong>{money(item.revenue)}</strong></div>)}</div></div> : <Empty title="Chưa có giao dịch" detail="Cơ cấu dịch vụ sẽ hiện khi cửa hàng ghi nhận giao dịch." />}</section></div>
-        <div className="pb-grid-two"><section className="pb-card"><div className="pb-card-head"><div><h3>Giao dịch gần đây</h3><p>{data?.metrics?.transactions || 0} giao dịch trong ngày</p></div><Link to="/photobooth/transactions">Xem tất cả <ArrowRight size={14} /></Link></div>{data?.recent?.length ? <div className="pb-list">{data.recent.map(item => <div className="pb-list-row" key={item.id}><div className="pb-avatar"><Camera size={17} /></div><div><strong>{item.service_name}</strong><span>{new Date(item.happened_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' })} · {paymentLabels[item.payment_method]}</span></div><b>{money(item.total_amount)}</b></div>)}</div> : <Empty title="Chưa có giao dịch hôm nay" detail="Ghi nhận giao dịch đầu tiên tại mục Thu tiền khách." />}</section>
+        <div className="pb-grid-two"><section className="pb-card"><div className="pb-card-head"><div><h3>Giao dịch gần đây</h3><p>{data?.metrics?.transactions || 0} giao dịch trong ngày</p></div><Link to="/photobooth/transactions">Xem tất cả <ArrowRight size={14} /></Link></div>{data?.recent?.length ? <div className="pb-list">{data.recent.map(item => <div className="pb-list-row" key={item.id}><div className="pb-avatar"><Camera size={17} /></div><div><strong>{item.service_name}</strong><span>{new Date(item.happened_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' })} · {sourceModes[item.source_mode] || paymentLabels[item.payment_method]}</span></div><b>{money(item.total_amount)}</b></div>)}</div> : <Empty title="Chưa có giao dịch hôm nay" detail="Ghi nhận giao dịch đầu tiên tại mục Thu tiền khách." />}</section>
           <section className="pb-card"><div className="pb-card-head"><div><h3>Ca làm hôm nay</h3><p>Phân công nhân viên</p></div><Link to="/photobooth/shifts">Xem ca <ArrowRight size={14} /></Link></div>{data?.shifts?.length ? <div className="pb-list">{data.shifts.map(item => <div className="pb-list-row" key={item.id}><div className="pb-avatar purple"><Users size={17} /></div><div><strong>{item.staff_name}</strong><span>{item.start_time?.slice(0, 5)} – {item.end_time?.slice(0, 5)}</span></div><em className="pb-pill">{statusLabels[item.status]}</em></div>)}</div> : <Empty title="Chưa xếp ca" detail="Thêm nhân viên rồi tạo ca làm để theo dõi lịch trực." />}</section></div>
         <div className="pb-grid-two"><section className="pb-card"><div className="pb-card-head"><h3>Bảng giá</h3><Link to="/photobooth/services">Quản lý <ArrowRight size={14} /></Link></div>{data?.services?.length ? data.services.slice(0, 5).map(item => <div className="pb-mini-row" key={item.id}><span>{item.name}</span><b>{money(item.price)}</b></div>) : <Empty title="Chưa có dịch vụ" detail="Thiết lập giá trước khi thu tiền khách." />}</section><section className="pb-card"><div className="pb-card-head"><h3>Quà tặng</h3><Link to="/photobooth/gifts">Kho quà <ArrowRight size={14} /></Link></div>{data?.gifts?.length ? data.gifts.slice(0, 5).map(item => <div className="pb-mini-row" key={item.id}><span>{item.name}</span><b className={item.quantity <= item.low_stock_threshold ? 'pb-alert-text' : ''}>{item.quantity} còn</b></div>) : <Empty title="Kho quà trống" detail="Thêm quà tặng để theo dõi số lượng." />}</section></div>
       </> : tab === 'cash' ? <CashPanel date={date} data={cashData} staff={staff} refresh={refresh} setError={setError} />
+        : tab === 'ptb' ? <PtbPanel date={date} data={ptbData} staff={staff} refresh={refresh} setError={setError} />
         : tab === 'customers' ? <CustomersPanel customers={customers} />
         : tab === 'finance' ? <FinancePanel month={month} data={finance} expenses={expenses} staff={staff} refresh={refresh} setError={setError} />
         : tab === 'reports' ? <ReportsPanel from={reportFrom} to={reportTo} setFrom={setReportFrom} setTo={setReportTo} report={report} orders={reportOrders} />
-        : <section className="pb-card pb-table-card"><div className="pb-card-head"><div><h3>{tab === 'transactions' ? 'Danh sách đơn hàng' : activeTitle}</h3><p>{rows.length} bản ghi {tab === 'transactions' ? `ngày ${dayLabel(date)}` : ''}</p></div></div>{tab === 'transactions' ? <DataTable rows={rows} columns={[["sale_date", "Ngày"], ["customer_name", "Khách hàng"], ["customer_phone", "SĐT"], ["service_name", "Dịch vụ"], ["quantity", "SL"], ["total_amount", "Doanh thu"], ["cash_in_drawer", "Tiền mặt thực"], ["transfer_received", "Chuyển khoản"], ["staff_name", "Nhân viên"], ["status", "Trạng thái"]]} action={row => row.status === 'completed' && <button className="pb-link-danger" onClick={() => voidOrder(row)}>Hủy đơn</button>} /> : <DataTable rows={rows} columns={configs[tab]?.columns || []} action={row => <div className="pb-row-actions">{tab === 'gifts' && <button onClick={() => { setForm({ delta: '', reason: '' }); setModal({ mode: 'adjust', row }); }}>Nhập / xuất</button>}<button onClick={() => openEdit(row)}>Sửa</button></div>} />}</section>}
+        : tab === 'transactions' ? <TransactionsPanel date={date} rows={rows} form={form} setForm={setForm} services={services} staff={staff} gifts={gifts} busy={busy} onSave={save} onVoid={voidOrder} />
+        : <section className="pb-card pb-table-card"><div className="pb-card-head"><div><h3>{activeTitle}</h3><p>{rows.length} bản ghi</p></div></div><DataTable rows={rows} columns={configs[tab]?.columns || []} action={row => <div className="pb-row-actions">{tab === 'gifts' && <button onClick={() => { setForm({ delta: '', reason: '' }); setModal({ mode: 'adjust', row }); }}>Nhập / xuất</button>}<button onClick={() => openEdit(row)}>Sửa</button></div>} /></section>}
     </div>
-    {modal && <Modal wide={tab === 'transactions'} title={modal.mode === 'adjust' ? `Điều chỉnh tồn · ${modal.row.name}` : tab === 'transactions' ? 'Thu tiền khách · Tạo đơn' : `${modal.mode === 'edit' ? 'Sửa' : 'Thêm'} ${configs[tab]?.title || ''}`} onClose={() => { setModal(null); setError(''); }}>
+    {modal && <Modal title={modal.mode === 'adjust' ? `Điều chỉnh tồn · ${modal.row.name}` : `${modal.mode === 'edit' ? 'Sửa' : 'Thêm'} ${configs[tab]?.title || ''}`} onClose={() => { setModal(null); setError(''); }}>
       {error && <div className="pb-error" role="alert">{error}</div>}
       {modal.mode === 'adjust' ? <form className="pb-form" onSubmit={event => { event.preventDefault(); adjustGift(modal.row); }}><p>Hiện có <strong>{modal.row.quantity}</strong> phần. Nhập số dương để thêm, số âm để xuất.</p><Field field={['delta', 'Thay đổi số lượng', 'number', true]} value={form.delta} onChange={(key, value) => setForm({ ...form, [key]: value })} /><Field field={['reason', 'Lý do', 'text']} value={form.reason} onChange={(key, value) => setForm({ ...form, [key]: value })} /><button className="pb-primary" disabled={busy}>Lưu tồn kho</button></form>
-        : tab === 'transactions' ? <OrderForm form={form} setForm={setForm} services={services} staff={staff} gifts={gifts} busy={busy} onSave={save} onCancel={() => setModal(null)} />
         : <form className="pb-form" onSubmit={save}>{configs[tab]?.fields.map(field => <Field key={field[0]} field={field} staff={staff} value={form[field[0]]} onChange={(key, value) => setForm({ ...form, [key]: value })} />)}<div className="pb-form-actions"><button type="button" onClick={() => setModal(null)}>Hủy</button><button className="pb-primary" disabled={busy}>{busy ? 'Đang lưu...' : 'Lưu thay đổi'}</button></div></form>}
     </Modal>}
+  </div>;
+}
+
+function TransactionsPanel({ date, rows, form, setForm, services, staff, gifts, busy, onSave, onVoid }) {
+  const displayRows = rows.map(row => ({
+    ...row,
+    source_label: sourceModes[row.source_mode] || sourceModes.counter,
+    machine_in: ['machine_self', 'machine_exchange'].includes(row.source_mode) ? row.total_amount : 0
+  }));
+  return <div className="pb-grid-two pb-order-layout">
+    <section className="pb-card"><h3>Thu tiền khách · Tạo đơn theo nguồn tiền</h3><OrderForm form={form} setForm={setForm} services={services} staff={staff} gifts={gifts} busy={busy} onSave={onSave} onCancel={() => setForm(newOrder(date))} resetLabel="Nhập lại" /></section>
+    <section className="pb-card pb-table-card"><div className="pb-card-head"><div><h3>Danh sách đơn hàng</h3><p>{rows.length} đơn ngày {dayLabel(date)}</p></div></div><DataTable rows={displayRows} columns={[["source_label", "Nguồn thu"], ["customer_name", "Khách hàng"], ["service_name", "Dịch vụ"], ["total_amount", "Doanh thu"], ["cash_in_drawer", "Quầy +/−"], ["machine_in", "Máy +"], ["transfer_received", "Chuyển khoản"], ["staff_name", "Nhân viên"], ["status", "Trạng thái"]]} action={row => row.status === 'completed' && <button className="pb-link-danger" onClick={() => onVoid(row)}>Hủy đơn</button>} /></section>
   </div>;
 }
 
@@ -187,7 +206,7 @@ function DataTable({ rows, columns, action }) {
 }
 function formatCell(key, value, row) {
   if (value == null || value === '') return <span className="pb-muted">—</span>;
-  if (['price', 'unit_price', 'total_amount', 'revenue', 'cost', 'cash_in_drawer', 'transfer_received'].includes(key)) return <strong>{money(value)}</strong>;
+  if (['price', 'unit_price', 'total_amount', 'revenue', 'cost', 'cash_in_drawer', 'machine_in', 'transfer_received'].includes(key)) return <strong>{money(value)}</strong>;
   if (['work_date', 'day', 'sale_date'].includes(key)) return dayLabel(value);
   if (key === 'happened_at' || key === 'reported_at') return new Date(value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
   if (key === 'payment_method') return paymentLabels[value] || value;

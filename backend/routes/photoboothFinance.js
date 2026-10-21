@@ -17,15 +17,30 @@ const fail = (res, error) => res.status(400).json({ error });
 const run = handler => async (req, res, next) => { try { await handler(req, res); } catch (error) { next(error); } };
 
 async function cashSummary(db, date) {
-  const [sales, movements] = await Promise.all([
-    db.query("SELECT COALESCE(SUM(cash_in_drawer),0)::float AS amount FROM pb_transactions WHERE sale_date=$1::date AND status='completed'", [date]),
-    db.query("SELECT type, COALESCE(SUM(amount),0)::float AS amount FROM pb_cash_movements WHERE movement_date=$1::date AND voided_at IS NULL GROUP BY type", [date])
-  ]);
+  const sales = await db.query("SELECT COALESCE(SUM(cash_in_drawer),0)::float AS amount FROM pb_transactions WHERE sale_date=$1::date AND status='completed'", [date]);
+  const movements = await db.query("SELECT type, COALESCE(SUM(amount),0)::float AS amount FROM pb_cash_movements WHERE movement_date=$1::date AND voided_at IS NULL GROUP BY type", [date]);
+  const machine = await db.query("SELECT COALESCE(SUM(amount),0)::float AS amount FROM pb_machine_movements WHERE movement_date=$1::date AND type='collect' AND destination='counter' AND voided_at IS NULL", [date]);
   const amounts = Object.fromEntries(movements.rows.map(row => [row.type, Number(row.amount)]));
   const opening = amounts.opening || 0;
   const salesCash = Number(sales.rows[0]?.amount || 0);
   const otherMoves = (amounts.in || 0) - (amounts.out || 0);
-  return { opening, salesCash, otherMoves, expected: opening + salesCash + otherMoves };
+  const machineCollected = Number(machine.rows[0]?.amount || 0);
+  return { opening, salesCash, otherMoves, machineCollected, expected: opening + salesCash + otherMoves + machineCollected };
+}
+
+async function machineSummary(db, date) {
+  const [sales, movements] = await Promise.all([
+    db.query(`SELECT COALESCE(SUM(total_amount),0)::float AS incoming FROM pb_transactions
+      WHERE sale_date=$1::date AND status='completed' AND source_mode IN ('machine_self','machine_exchange')`, [date]),
+    db.query(`SELECT type,destination,COALESCE(SUM(amount),0)::float AS amount FROM pb_machine_movements
+      WHERE movement_date=$1::date AND voided_at IS NULL GROUP BY type,destination`, [date])
+  ]);
+  const opening = Number(movements.rows.find(row => row.type === 'opening')?.amount || 0);
+  const incoming = Number(sales.rows[0]?.incoming || 0);
+  const collectedToCounter = Number(movements.rows.find(row => row.type === 'collect' && row.destination === 'counter')?.amount || 0);
+  const collectedToBank = Number(movements.rows.find(row => row.type === 'collect' && row.destination === 'bank')?.amount || 0);
+  const collected = collectedToCounter + collectedToBank;
+  return { opening, incoming, collected, collectedToCounter, collectedToBank, expected: opening + incoming - collected };
 }
 
 router.get('/cash', run(async (req, res) => {
@@ -66,6 +81,63 @@ router.post('/cash/closures', run(async (req, res) => {
     await client.query('COMMIT');
     res.status(201).json(result.rows[0]);
   } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+}));
+
+router.get('/ptb', run(async (req, res) => {
+  if (!dateOK(req.query.date)) return fail(res, 'Ngày không hợp lệ.');
+  const date = req.query.date;
+  const [sales, machine, counter, movements, counts] = await Promise.all([
+    pool.query(`SELECT source_mode,COUNT(*)::int AS orders,COALESCE(SUM(total_amount),0)::float AS revenue,
+      COALESCE(SUM(cash_in_drawer),0)::float AS counter_change,COALESCE(SUM(transfer_received),0)::float AS transfer
+      FROM pb_transactions WHERE sale_date=$1::date AND status='completed' GROUP BY source_mode`, [date]),
+    machineSummary(pool, date), cashSummary(pool, date),
+    pool.query(`SELECT m.*,m.movement_date::text AS movement_date,s.name AS staff_name FROM pb_machine_movements m
+      LEFT JOIN pb_staff s ON s.id=m.staff_id WHERE m.movement_date=$1::date AND m.voided_at IS NULL ORDER BY m.created_at DESC,m.id DESC`, [date]),
+    pool.query(`SELECT c.*,c.count_date::text AS count_date,s.name AS staff_name FROM pb_machine_counts c
+      LEFT JOIN pb_staff s ON s.id=c.staff_id WHERE c.count_date=$1::date ORDER BY c.created_at DESC,c.id DESC`, [date])
+  ]);
+  const sources = Object.fromEntries(sales.rows.map(row => [row.source_mode, row]));
+  const totals = sales.rows.reduce((sum, row) => ({ revenue: sum.revenue + Number(row.revenue), orders: sum.orders + row.orders, transfer: sum.transfer + Number(row.transfer) }), { revenue: 0, orders: 0, transfer: 0 });
+  res.json({ date, sources, totals, machine, counter, movements: movements.rows, counts: counts.rows });
+}));
+
+router.post('/ptb/movements', run(async (req, res) => {
+  const b = req.body || {};
+  if (!dateOK(b.movement_date) || !['opening', 'collect'].includes(b.type) || !moneyOK(b.amount) || Number(b.amount) <= 0 || (b.type === 'collect' && !['counter', 'bank'].includes(b.destination))) return fail(res, 'Thông tin giao dịch máy PTB không hợp lệ.');
+  if (b.staff_id && !idOK(b.staff_id)) return fail(res, 'Nhân viên không hợp lệ.');
+  if (b.type === 'opening') {
+    const existing = await pool.query("SELECT 1 FROM pb_machine_movements WHERE movement_date=$1::date AND type='opening' AND voided_at IS NULL", [b.movement_date]);
+    if (existing.rowCount) return fail(res, 'Ngày này đã có tiền đầu ngày trong máy.');
+  }
+  try {
+    const result = await pool.query(`INSERT INTO pb_machine_movements(movement_date,type,destination,amount,staff_id,note)
+      VALUES($1,$2,$3,$4,$5,$6) RETURNING *`, [b.movement_date, b.type, b.type === 'collect' ? b.destination : null, Number(b.amount), b.staff_id || null, short(b.note, 1000) || null]);
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    if (error.code === '23505') return fail(res, 'Ngày này đã có tiền đầu ngày trong máy.');
+    if (error.code === '23503') return fail(res, 'Nhân viên không tồn tại.');
+    throw error;
+  }
+}));
+
+router.delete('/ptb/movements/:id', run(async (req, res) => {
+  if (!idOK(req.params.id)) return fail(res, 'ID không hợp lệ.');
+  const result = await pool.query('UPDATE pb_machine_movements SET voided_at=NOW() WHERE id=$1 AND voided_at IS NULL RETURNING id', [req.params.id]);
+  if (!result.rowCount) return res.status(404).json({ error: 'Giao dịch máy PTB không tồn tại.' });
+  res.json({ id: result.rows[0].id });
+}));
+
+router.post('/ptb/counts', run(async (req, res) => {
+  const b = req.body || {};
+  if (!dateOK(b.count_date) || !moneyOK(b.actual_amount)) return fail(res, 'Ngày hoặc tiền kiểm đếm không hợp lệ.');
+  if (b.staff_id && !idOK(b.staff_id)) return fail(res, 'Nhân viên không hợp lệ.');
+  const expected = (await machineSummary(pool, b.count_date)).expected;
+  const actual = Number(b.actual_amount);
+  try {
+    const result = await pool.query(`INSERT INTO pb_machine_counts(count_date,expected_amount,actual_amount,difference_amount,staff_id,note)
+      VALUES($1,$2,$3,$4,$5,$6) RETURNING *`, [b.count_date, expected, actual, actual - expected, b.staff_id || null, short(b.note, 1000) || null]);
+    res.status(201).json(result.rows[0]);
+  } catch (error) { if (error.code === '23503') return fail(res, 'Nhân viên không tồn tại.'); throw error; }
 }));
 
 router.get('/customers', run(async (_req, res) => {
@@ -132,11 +204,12 @@ router.get('/finance', run(async (req, res) => {
 const backupTables = [
   'pb_services', 'pb_gifts', 'pb_assets', 'pb_staff',
   'pb_shifts', 'pb_tasks', 'pb_incidents', 'pb_transactions',
-  'pb_gift_movements', 'pb_cash_movements', 'pb_cash_closures', 'pb_expenses'
+  'pb_gift_movements', 'pb_cash_movements', 'pb_cash_closures', 'pb_machine_movements', 'pb_machine_counts', 'pb_expenses'
 ];
 const backupDateColumns = {
   pb_transactions: ['sale_date'], pb_shifts: ['work_date'], pb_tasks: ['work_date'],
-  pb_cash_movements: ['movement_date'], pb_cash_closures: ['close_date'], pb_expenses: ['expense_date']
+  pb_cash_movements: ['movement_date'], pb_cash_closures: ['close_date'],
+  pb_machine_movements: ['movement_date'], pb_machine_counts: ['count_date'], pb_expenses: ['expense_date']
 };
 
 router.get('/backup', requireAdmin, run(async (_req, res) => {
@@ -146,13 +219,15 @@ router.get('/backup', requireAdmin, run(async (_req, res) => {
     for (const column of backupDateColumns[table] || []) if (copy[column] != null) copy[column] = vietnamDate(copy[column]);
     return copy;
   });
-  res.json({ type: 'snappro-photobooth-backup', version: 1, exported_at: new Date().toISOString(), data });
+  res.json({ type: 'snappro-photobooth-backup', version: 2, exported_at: new Date().toISOString(), data });
 }));
 
 router.post('/restore', requireAdmin, run(async (req, res) => {
   const snapshot = req.body;
-  if (snapshot?.type !== 'snappro-photobooth-backup' || snapshot.version !== 1 || !snapshot.data || typeof snapshot.data !== 'object') return fail(res, 'File sao lưu Photobooth không hợp lệ.');
-  if (backupTables.some(table => !Array.isArray(snapshot.data[table]) || snapshot.data[table].length > 100000)) return fail(res, 'File sao lưu thiếu bảng hoặc có quá nhiều bản ghi.');
+  if (snapshot?.type !== 'snappro-photobooth-backup' || ![1, 2].includes(snapshot.version) || !snapshot.data || typeof snapshot.data !== 'object') return fail(res, 'File sao lưu Photobooth không hợp lệ.');
+  const data = { ...snapshot.data };
+  if (snapshot.version === 1) for (const table of ['pb_machine_movements', 'pb_machine_counts']) data[table] = [];
+  if (backupTables.some(table => !Array.isArray(data[table]) || data[table].length > 100000)) return fail(res, 'File sao lưu thiếu bảng hoặc có quá nhiều bản ghi.');
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -167,18 +242,18 @@ router.post('/restore', requireAdmin, run(async (req, res) => {
     await client.query(`TRUNCATE ${backupTables.join(',')} RESTART IDENTITY`);
     for (const table of backupTables) {
       const seen = new Set();
-      for (const row of snapshot.data[table]) {
+      for (const row of data[table]) {
         if (!row || typeof row !== 'object' || !idOK(row.id) || seen.has(row.id) || Object.keys(row).some(key => !columns[table].has(key))) throw Object.assign(new Error(`Bản ghi trong ${table} không hợp lệ.`), { status: 400 });
         seen.add(row.id);
         const keys = Object.keys(row);
         await client.query(`INSERT INTO ${table} (${keys.join(',')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(',')})`, keys.map(key => (backupDateColumns[table] || []).includes(key) && row[key] != null ? vietnamDate(row[key]) : row[key]));
       }
-      const max = snapshot.data[table].reduce((value, row) => Math.max(value, Number(row.id)), 0);
+      const max = data[table].reduce((value, row) => Math.max(value, Number(row.id)), 0);
       const sequence = (await client.query("SELECT pg_get_serial_sequence($1,'id') AS sequence", [table])).rows[0].sequence;
       if (sequence) await client.query('SELECT setval($1::regclass,$2,$3)', [sequence, Math.max(1, max), max > 0]);
     }
     await client.query('COMMIT');
-    res.json({ restored: Object.fromEntries(backupTables.map(table => [table, snapshot.data[table].length])) });
+    res.json({ restored: Object.fromEntries(backupTables.map(table => [table, data[table].length])) });
   } catch (error) {
     await client.query('ROLLBACK');
     if (error.status === 400) return res.status(400).json({ error: error.message });

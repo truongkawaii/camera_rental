@@ -103,6 +103,8 @@
 .pb-wide{grid-column:1/-1}
 .pb-inline-form .pb-primary{justify-self:start}
 .pb-order-form{grid-template-columns:repeat(3,minmax(0,1fr));padding:8px 24px 24px}
+.pb-order-layout{grid-template-columns:minmax(330px,0.9fr) minmax(0,1.3fr);align-items:start}
+.pb-order-layout .pb-order-form{grid-template-columns:repeat(2,minmax(0,1fr));padding:0}
 .pb-order-calc{display:flex;flex-direction:column;gap:4px;background:#fff0f7;border:1px solid #f5d6e6;border-radius:12px;padding:13px;color:#876879;font-size:12px}
 .pb-order-calc strong{color:#c63d81;font-size:16px}
 .pb-notice{background:#fff0f7;border-left:4px solid #e95c9b;border-radius:9px;padding:12px 15px;font-size:12px;color:#806575;line-height:1.55}
@@ -115,7 +117,7 @@
 .pb-formula{background:#fff3f8;border-radius:10px;padding:13px;color:#8b667b;font-size:12px;line-height:1.6}.pb-formula strong{color:#b83c7b}
 .pb-report-filter{align-items:center;flex-wrap:wrap}
 @media(max-width:760px){.pb-order-form{grid-template-columns:1fr 1fr}.pb-inline-form{grid-template-columns:1fr}.pb-order-form .pb-wide{grid-column:1/-1}.pb-inline-form .pb-wide{grid-column:1/-1}}
-@media(max-width:480px){.pb-order-form{grid-template-columns:1fr}}
+@media(max-width:480px){.pb-order-form,.pb-order-layout .pb-order-form{grid-template-columns:1fr}}
 @media(max-width:480px){.pb-topline{height:auto;min-height:42px;flex-wrap:wrap;padding:6px 14px}.pb-backup-actions button{font-size:10px;padding:5px}}
 @media print{.pb-page{background:#fff}.pb-topline,.pb-tabs,.pb-hero,.pb-no-print,.pb-section-head .pb-actions{display:none!important}.pb-content{padding:0}.pb-card,.pb-stat{box-shadow:none;break-inside:avoid}.pb-grid-two{grid-template-columns:1fr 1fr}}
 .pb-modal-header{display:flex;justify-content:space-between;align-items:start;padding:22px 24px 10px}
@@ -133,6 +135,7 @@
 .pb-check input{accent-color:#e95c9b}
 .pb-form-total{background:#fff3f8;border:1px solid #f6dce9;border-radius:10px;padding:12px;display:flex;justify-content:space-between;color:#907383;font-size:12px}
 .pb-form-total strong{color:#d64a8d;font-size:16px}
+.pb-reconcile-total{font-size:27px;font-weight:800;color:#d9488b;margin:12px 0 8px}
 .pb-form-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:10px}
 .pb-form-actions>button:first-child{border:1px solid #eadce5;border-radius:10px;background:#fff;padding:9px 15px;color:#8e7986;font-size:12px;cursor:pointer}
 @media(max-width:1180px){.pb-grid-three{grid-template-columns:1fr 1fr}

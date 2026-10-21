@@ -13,6 +13,8 @@
 - Quà tặng được trừ tồn và ghi lịch sử biến động trong cùng một database transaction với giao dịch bán.
 - Báo cáo tính theo ngày Việt Nam (`Asia/Ho_Chi_Minh`) từ giao dịch Photobooth, không gộp doanh thu thuê máy ảnh.
 - Đơn hàng lưu khách, điện thoại, ngày bán, ca, giảm giá, tiền mặt khách đưa, chuyển khoản, tiền thối và tiền mặt thực vào két. Giá có thể điều chỉnh trên từng đơn và được lưu lại cùng đơn.
+- Đơn mới chọn nguồn thu: khách tự bỏ tiền vào máy PTB, khách chuyển khoản rồi thu ngân đổi tiền vào máy, hoặc bán thêm tại quầy. Đơn cũ mặc định thuộc nguồn quầy. Doanh thu chỉ ghi một lần; tiền khách bỏ máy không vào quầy, còn khoản đổi tiền ghi chuyển khoản và giảm tiền quầy tương ứng.
+- Đối soát máy PTB theo ngày gồm tiền đầu ngày, tiền từ đơn, tiền lấy khỏi máy về quầy/ngân hàng và số kiểm đếm thực tế. Tiền lấy máy về quầy tăng quỹ quầy nhưng không tạo doanh thu mới. Giao dịch tiền máy và kết quả kiểm đếm nằm trong sao lưu Photobooth; bản sao lưu cũ vẫn có thể khôi phục.
 - Hủy đơn giữ lại lịch sử, loại đơn khỏi doanh thu/quỹ và hoàn số quà đã tặng. Các khoản chi và bút toán quỹ cũng được hủy mềm thay vì xóa hẳn.
 - Tiền tại quầy = tiền đầu ca/ngày + tiền mặt thực từ đơn + thu quỹ khác − chi/rút quỹ. Đổi mệnh giá không đổi tổng quỹ. Chốt quỹ lưu số dự kiến, số đếm thực và chênh lệch.
 - Lợi nhuận tạm tính = doanh thu đơn Photobooth − chi phí phát sinh − ADS − mặt bằng − lương nhân viên Photobooth đã ghi nhận. Khoản lương gắn với nhân viên Photobooth và ngày chi, không lấy từ bảng lương Camera. Bút toán quỹ không được trừ lợi nhuận lần nữa.
@@ -24,8 +26,8 @@
 1. Thiết lập danh mục dịch vụ, giá, nhân viên và quà tặng.
 2. Nhập số tồn quà ban đầu qua thao tác **Nhập / xuất**; mọi lần điều chỉnh có lý do và lịch sử.
 3. Xếp ca cho nhân viên.
-4. Ghi đơn: chọn dịch vụ, số lượng, đơn giá, giảm giá, tiền mặt/chuyển khoản, khách, nhân viên, ca và quà nếu có. Máy chủ kiểm tra đủ tiền và tính thành tiền, tiền thối, tiền mặt vào két.
-5. Ghi tiền đầu ca, khoản thu/chi hoặc đổi mệnh giá; chốt quỹ theo số tiền đếm thực tế.
+4. Tại **Thu tiền khách**, chọn nguồn thu trước rồi ghi đơn: dịch vụ, số lượng, đơn giá, giảm giá, khách, nhân viên, ca và quà nếu có. Với đơn bán tại quầy, nhập tiền mặt/chuyển khoản để máy chủ kiểm tra đủ tiền và tính tiền thối. Với đơn máy PTB, máy chủ tự xác định tiền vào máy, tiền quầy và chuyển khoản theo nguồn thu.
+5. Ghi tiền đầu ca, khoản thu/chi hoặc đổi mệnh giá; chốt quỹ theo số tiền đếm thực tế. Đối soát riêng tiền trong máy PTB và ghi nhận nơi nhận tiền khi lấy tiền ra khỏi máy.
 6. Ghi chi phí Photobooth theo nhóm phát sinh, ADS, mặt bằng hoặc lương gắn với nhân viên Photobooth; xem lợi nhuận theo ngày/tháng.
 7. Theo dõi tổng quan ngày, kiểm tra cảnh báo tồn kho quà, xuất báo cáo và sao lưu định kỳ.
 
