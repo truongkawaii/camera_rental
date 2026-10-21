@@ -37,7 +37,7 @@ export function BackupControls() {
     setError(''); setPhrase('');
     try {
       const value = JSON.parse(await file.text());
-      if (value.type !== 'snappro-photobooth-backup' || ![1, 2].includes(value.version) || !value.data || !Array.isArray(value.data.pb_transactions)) throw new Error('File sao lưu Photobooth không hợp lệ.');
+      if (value.type !== 'snappro-photobooth-backup' || ![1, 2, 3].includes(value.version) || !value.data || !Array.isArray(value.data.pb_transactions)) throw new Error('File sao lưu Photobooth không hợp lệ.');
       setSnapshot(value);
     } catch (err) { setError(err.message || 'Không đọc được file sao lưu.'); }
   }
@@ -56,7 +56,7 @@ function CellTable({ headers, rows }) {
   return <div className="pb-table-wrap"><table className="pb-table"><thead><tr>{headers.map(item => <th key={item}>{item}</th>)}</tr></thead><tbody>{rows.length ? rows.map((row, i) => <tr key={i}>{row.map((cell, j) => <td key={j}>{cell}</td>)}</tr>) : <tr><td colSpan={headers.length} className="pb-muted">Chưa có dữ liệu</td></tr>}</tbody></table></div>;
 }
 
-export function CashPanel({ date, data, staff, refresh, setError }) {
+export function CashPanel({ date, data, staff, refresh, setError, readOnly = false }) {
   const [move, setMove] = useState({ type: 'opening', amount: '', staff_id: '', note: '' });
   const [close, setClose] = useState({ actual_amount: '', staff_id: '', note: '' });
   const [busy, setBusy] = useState(false);
@@ -85,7 +85,7 @@ export function CashPanel({ date, data, staff, refresh, setError }) {
   </>;
 }
 
-export function PtbPanel({ date, data, staff, refresh, setError }) {
+export function PtbPanel({ date, data, staff, refresh, setError, readOnly = false }) {
   const [move, setMove] = useState({ type: 'opening', destination: 'counter', amount: '', staff_id: '', note: '' });
   const [count, setCount] = useState({ actual_amount: '', staff_id: '', note: '' });
   const [busy, setBusy] = useState(false);
@@ -187,7 +187,7 @@ export function ReportsPanel({ from, to, setFrom, setTo, report, orders }) {
   </>;
 }
 
-export function FinancePanel({ month, data, expenses, staff, refresh, setError }) {
+export function FinancePanel({ month, data, expenses, staff, refresh, setError, readOnly = false }) {
   const [form, setForm] = useState({ expense_date: `${month}-01`, category: 'other', staff_id: '', amount: '', note: '', payment_method: 'transfer', recorded_by: '' });
   const [busy, setBusy] = useState(false);
   useEffect(() => { setForm(current => ({ ...current, expense_date: `${month}-01` })); }, [month]);

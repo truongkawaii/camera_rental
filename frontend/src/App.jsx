@@ -30,7 +30,7 @@ import './index.css';
 /* ── Auth Gate ──────────────────────────────────────────────────── */
 function AuthGate() {
   const { user, loading, logout, isAdmin, isSaler, isCameraManager, isInvestor, isDriver, activeRole, switchRole } = useAuth();
-  const canAccessPhotobooth = isAdmin || (Boolean(user?.photobooth_access) && ['saler', 'camera_manager', 'driver'].includes(activeRole));
+  const canAccessPhotobooth = isAdmin || (Boolean(user?.photobooth_access) && ['saler', 'camera_manager', 'driver', 'investor'].includes(activeRole));
   const [sidebarOpen, setSidebarOpen] = React.useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [roleDropdownOpen, setRoleDropdownOpen] = React.useState(false);

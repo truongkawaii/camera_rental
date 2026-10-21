@@ -20,28 +20,50 @@ test('Photobooth order, drawer and finance stay separate from camera rentals', {
     assert.ok(response.ok, `${method} ${path}: ${JSON.stringify(value)}`);
     return value;
   }
+  async function callAccessList() {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/photobooth-access`, { headers: { Authorization: authorization } });
+    assert.equal(response.status, 200);
+    return response.json();
+  }
   try {
-    await pool.query('TRUNCATE pb_services,pb_gifts,pb_assets,pb_staff,pb_shifts,pb_tasks,pb_incidents,pb_transactions,pb_gift_movements,pb_cash_movements,pb_cash_closures,pb_machine_movements,pb_machine_counts,pb_expenses RESTART IDENTITY');
+    await pool.query('TRUNCATE pb_services,pb_gifts,pb_assets,pb_staff,pb_shifts,pb_tasks,pb_incidents,pb_transactions,pb_gift_movements,pb_cash_movements,pb_cash_closures,pb_machine_movements,pb_machine_counts,pb_expenses,pb_attendance RESTART IDENTITY');
     const before = (await pool.query('SELECT count(*)::int AS count FROM rentals')).rows[0].count;
     const role = await pool.query("INSERT INTO roles(name) VALUES('saler') ON CONFLICT(name) DO UPDATE SET name=EXCLUDED.name RETURNING id");
-    for (const name of ['admin', 'saler']) {
+    const investorRole = await pool.query("INSERT INTO roles(name) VALUES('investor') ON CONFLICT(name) DO UPDATE SET name=EXCLUDED.name RETURNING id");
+    for (const name of ['admin', 'saler', 'investor']) {
       const account = await pool.query('INSERT INTO users(username,password,full_name) VALUES($1,$2,$3) RETURNING id', [`pb_access_${name}_${Date.now()}`, 'unused', name]);
       temporaryUsers.push(account.rows[0].id);
     }
     await pool.query('INSERT INTO user_roles(user_id,role_id) VALUES($1,$2)', [temporaryUsers[1], role.rows[0].id]);
+    await pool.query('INSERT INTO user_roles(user_id,role_id) VALUES($1,$2)', [temporaryUsers[2], investorRole.rows[0].id]);
     authorization = `Bearer ${jwt.sign({ id: temporaryUsers[0], role: 'admin', roles: ['admin'] }, process.env.JWT_SECRET || 'fallback_secret')}`;
     const staffAuthorization = `Bearer ${jwt.sign({ id: temporaryUsers[1], role: 'saler', roles: ['saler'] }, process.env.JWT_SECRET || 'fallback_secret')}`;
+    const investorAuthorization = `Bearer ${jwt.sign({ id: temporaryUsers[2], role: 'investor', roles: ['investor'] }, process.env.JWT_SECRET || 'fallback_secret')}`;
     const staffRequest = () => fetch(`${base}/services`, { headers: { Authorization: staffAuthorization } });
     assert.equal((await staffRequest()).status, 403);
     const grant = await fetch(`http://127.0.0.1:${server.address().port}/api/photobooth-access/${temporaryUsers[1]}`, { method: 'PUT', headers: { Authorization: authorization, 'Content-Type': 'application/json' }, body: JSON.stringify({ allowed: true }) });
     assert.equal(grant.status, 200);
     assert.equal((await fetch(`http://127.0.0.1:${server.address().port}/api/photobooth-access`, { headers: { Authorization: staffAuthorization } })).status, 403);
     assert.equal((await staffRequest()).status, 200);
-    assert.equal((await fetch(`${base}/finance?month=2026-10`, { headers: { Authorization: staffAuthorization } })).status, 200);
+    for (const path of ['/reports?from=2026-10-21&to=2026-10-21', '/finance?month=2026-10', '/expenses?month=2026-10', '/transactions?from=2026-10-21&to=2026-10-21', '/transactions']) {
+      assert.equal((await fetch(`${base}${path}`, { headers: { Authorization: staffAuthorization } })).status, 403, path);
+    }
+    assert.equal((await fetch(`${base}/transactions?date=2026-10-21`, { headers: { Authorization: staffAuthorization } })).status, 200);
+    const accessList = await callAccessList();
+    assert.ok(accessList.some(user => user.id === temporaryUsers[2] && user.roles.includes('investor')));
+    assert.equal((await fetch(`${base}/reports?from=2026-10-21&to=2026-10-21`, { headers: { Authorization: investorAuthorization } })).status, 403);
+    const investorGrant = await fetch(`http://127.0.0.1:${server.address().port}/api/photobooth-access/${temporaryUsers[2]}`, { method: 'PUT', headers: { Authorization: authorization, 'Content-Type': 'application/json' }, body: JSON.stringify({ allowed: true }) });
+    assert.equal(investorGrant.status, 200);
+    assert.equal((await fetch(`${base}/reports?from=2026-10-21&to=2026-10-21`, { headers: { Authorization: investorAuthorization } })).status, 200);
+    assert.equal((await fetch(`${base}/finance?month=2026-10`, { headers: { Authorization: investorAuthorization } })).status, 200);
+    assert.equal((await fetch(`${base}/expenses?month=2026-10`, { headers: { Authorization: investorAuthorization } })).status, 200);
+    assert.equal((await fetch(`${base}/services`, { method: 'POST', headers: { Authorization: investorAuthorization, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Không được ghi' }) })).status, 403);
     const revoke = await fetch(`http://127.0.0.1:${server.address().port}/api/photobooth-access/${temporaryUsers[1]}`, { method: 'PUT', headers: { Authorization: authorization, 'Content-Type': 'application/json' }, body: JSON.stringify({ allowed: false }) });
     assert.equal(revoke.status, 200);
     assert.equal((await staffRequest()).status, 403);
     assert.equal((await fetch(`${base}/finance?month=2026-10`, { headers: { Authorization: staffAuthorization } })).status, 403);
+    const regrant = await fetch(`http://127.0.0.1:${server.address().port}/api/photobooth-access/${temporaryUsers[1]}`, { method: 'PUT', headers: { Authorization: authorization, 'Content-Type': 'application/json' }, body: JSON.stringify({ allowed: true }) });
+    assert.equal(regrant.status, 200);
     const service = await call('/services', 'POST', { name: 'Chụp khổ dọc', category: 'shoot', price: 70000 });
     const gift = await call('/gifts', 'POST', { name: 'Gấu bông', low_stock_threshold: 1 });
     await call(`/gifts/${gift.id}/adjust`, 'POST', { delta: 2, reason: 'Nhập đầu kỳ' });
@@ -56,6 +78,15 @@ test('Photobooth order, drawer and finance stay separate from camera rentals', {
     assert.equal(Number(closure.difference_amount), -2000);
     for (const [category, amount] of [['other', 10000], ['ads', 5000], ['rent', 20000]]) await call('/expenses', 'POST', { expense_date: '2026-10-21', category, amount, note: category, payment_method: 'transfer' });
     const staff = await call('/staff', 'POST', { name: 'Nhân viên Photobooth', role: 'Thu ngân', active: true });
+    const attendance = await call('/attendance', 'POST', { staff_id: staff.id, work_date: '2026-10-21', status: 'present', check_in: '09:00', check_out: '17:00' });
+    assert.equal(attendance.status, 'present');
+    await call('/attendance', 'POST', { staff_id: staff.id, work_date: '2026-10-21', status: 'half_day', check_in: '09:00', check_out: '13:00' });
+    assert.equal((await call('/attendance?month=2026-10')).length, 1);
+    assert.equal((await call('/attendance?month=2026-10'))[0].status, 'half_day');
+    assert.equal((await fetch(`${base}/attendance?month=2026-10`, { headers: { Authorization: staffAuthorization } })).status, 200);
+    assert.equal((await fetch(`${base}/finance?month=2026-10`, { headers: { Authorization: staffAuthorization } })).status, 403);
+    assert.equal((await fetch(`${base}/attendance?month=2026-10`, { headers: { Authorization: investorAuthorization } })).status, 200);
+    assert.equal((await fetch(`${base}/attendance`, { method: 'POST', headers: { Authorization: investorAuthorization, 'Content-Type': 'application/json' }, body: JSON.stringify({ staff_id: staff.id, work_date: '2026-10-22', status: 'present' }) })).status, 403);
     await call('/expenses', 'POST', { expense_date: '2026-10-21', category: 'salary', staff_id: staff.id, amount: 7000, note: 'Lương tháng 10', payment_method: 'transfer' });
     assert.equal((await call('/expenses?month=2026-10')).find(item => item.category === 'salary').staff_name, staff.name);
     const finance = await call('/finance?month=2026-10');
@@ -107,12 +138,14 @@ test('Photobooth order, drawer and finance stay separate from camera rentals', {
     assert.equal((await call('/reports?from=2026-10-21&to=2026-10-21')).sources.length, 3);
     const backup = await call('/backup');
     assert.equal(backup.type, 'snappro-photobooth-backup');
-    assert.equal(backup.version, 2);
+    assert.equal(backup.version, 3);
+    assert.equal(backup.data.pb_attendance.length, 1);
     assert.equal(backup.data.pb_machine_movements.length, 3);
     assert.equal(backup.data.pb_machine_counts.length, 1);
     assert.ok(backup.data.pb_transactions.length > 0);
     assert.equal(backup.data.pb_transactions[0].sale_date, '2026-10-21');
     await call('/restore', 'POST', backup);
+    assert.equal((await call('/attendance?month=2026-10')).length, 1);
     assert.equal((await call('/transactions?date=2026-10-21')).length, backup.data.pb_transactions.length);
     assert.equal((await call('/ptb?date=2026-10-21')).machine.expected, 70000);
     const invalid = structuredClone(backup);
@@ -124,6 +157,7 @@ test('Photobooth order, drawer and finance stay separate from camera rentals', {
     legacyBackup.version = 1;
     delete legacyBackup.data.pb_machine_movements;
     delete legacyBackup.data.pb_machine_counts;
+    delete legacyBackup.data.pb_attendance;
     await call('/restore', 'POST', legacyBackup);
     assert.equal((await call('/ptb?date=2026-10-21')).machine.expected, 140000);
     assert.equal((await pool.query('SELECT count(*)::int AS count FROM rentals')).rows[0].count, before);

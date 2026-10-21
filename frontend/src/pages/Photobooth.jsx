@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ResponsiveContainer, AreaChart, Area, CartesianGrid, XAxis, Tooltip, PieChart, Pie, Cell } from 'recharts';
 import { ArrowLeft, ArrowRight, CalendarDays, Camera, CreditCard, Gift, LayoutDashboard, Plus, ShoppingBag, Sparkles, TrendingUp, Users, Wallet, X } from 'lucide-react';
 import { photoboothApi } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { BackupControls, CashPanel, CustomersPanel, FinancePanel, OrderForm, PtbPanel, ReportsPanel, sourceModes } from './PhotoboothOperations';
+import AttendancePanel from './PhotoboothAttendance';
 import './Photobooth.css';
 
 const vnDate = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -23,6 +24,7 @@ const tabs = [
   { key: 'services', label: 'Bảng giá', icon: ShoppingBag },
   { key: 'gifts', label: 'Gấu bông · Quà tặng', icon: Gift },
   { key: 'staff', label: 'Nhân viên', icon: Users },
+  { key: 'attendance', label: 'Chấm công', icon: CalendarDays },
   { key: 'shifts', label: 'Ca làm việc', icon: CalendarDays },
   { key: 'reports', label: 'Báo cáo doanh thu', icon: TrendingUp },
   { key: 'finance', label: 'Báo cáo tài chính', icon: TrendingUp }
@@ -61,9 +63,13 @@ function Empty({ title = 'Chưa có dữ liệu', detail = 'Thêm bản ghi đ�
 }
 
 export default function Photobooth() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, isInvestor } = useAuth();
   const location = useLocation();
-  const tab = tabs.find(item => location.pathname === `/photobooth/${item.key}`)?.key || 'overview';
+  const navigate = useNavigate();
+  const canViewReports = isAdmin || isInvestor;
+  const visibleTabs = canViewReports ? tabs : tabs.filter(item => !['reports', 'finance'].includes(item.key));
+  const requestedTab = tabs.find(item => location.pathname === `/photobooth/${item.key}`)?.key;
+  const tab = visibleTabs.find(item => item.key === requestedTab)?.key || 'overview';
   const [date, setDate] = useState(vnDate());
   const [data, setData] = useState(null);
   const [overviewCash, setOverviewCash] = useState(null);
@@ -86,6 +92,7 @@ export default function Photobooth() {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  useEffect(() => { if (requestedTab && requestedTab !== tab) navigate('/photobooth', { replace: true }); }, [requestedTab, tab, navigate]);
 
   const refresh = useCallback(async () => {
     setLoading(true); setError('');
@@ -109,6 +116,7 @@ export default function Photobooth() {
         const [summary, items, people] = await Promise.all([photoboothApi.finance(month), photoboothApi.expenses(month), photoboothApi.list('staff')]);
         setFinance(summary.data); setExpenses(items.data); setStaff(people.data);
       }
+      else if (tab === 'attendance') { /* AttendancePanel manages its monthly data. */ }
       else if (tab === 'transactions') {
         const [tx, svc, people, inventory] = await Promise.all([photoboothApi.transactions(date), photoboothApi.list('services'), photoboothApi.list('staff'), photoboothApi.list('gifts')]);
         setRows(tx.data); setServices(svc.data); setStaff(people.data); setGifts(inventory.data);
@@ -152,15 +160,15 @@ export default function Photobooth() {
   }
 
   const activeTitle = tabs.find(item => item.key === tab)?.label;
-  return <div className="pb-page">
+  return <div className={`pb-page${isInvestor ? ' pb-readonly' : ''}`}>
     <div className="pb-topline"><Link to="/" className="pb-back"><ArrowLeft size={15} /> Hệ thống SnapPro</Link>{isAdmin && <BackupControls />}</div>
     <div className="pb-hero"><div className="pb-brand-mark"><Camera size={27} /></div><div><p className="pb-eyebrow">PHOTOBOOTH & PRINT STUDIO · 75 PHỐ XỐM, HÀ ĐÔNG</p><h1>Insphoto ♡</h1><p>Vận hành cửa hàng, doanh thu và trải nghiệm khách hàng trong một nơi.</p></div><div className="pb-hero-decor"><Sparkles size={46} /></div></div>
-    <nav className="pb-tabs" aria-label="Quản lý Photobooth">{tabs.map(item => { const Icon = item.icon; return <Link key={item.key} to={item.key === 'overview' ? '/photobooth' : `/photobooth/${item.key}`} className={`pb-tab ${tab === item.key ? 'active' : ''}`}><Icon size={17} /><span>{item.label}</span></Link>; })}</nav>
+    <nav className="pb-tabs" aria-label="Quản lý Photobooth">{visibleTabs.map(item => { const Icon = item.icon; return <Link key={item.key} to={item.key === 'overview' ? '/photobooth' : `/photobooth/${item.key}`} className={`pb-tab ${tab === item.key ? 'active' : ''}`}><Icon size={17} /><span>{item.label}</span></Link>; })}</nav>
     <div className="pb-content">
       <div className="pb-section-head"><div><p className="pb-eyebrow">{tab === 'overview' ? 'DỮ LIỆU THỰC TẾ' : 'QUẢN LÝ PHOTOBOOTH'}</p><h2>{tab === 'overview' ? 'Tổng quan vận hành' : activeTitle}</h2><p>{tab === 'overview' ? 'Theo dõi hoạt động cửa hàng theo ngày.' : tab === 'reports' ? 'Doanh thu được tổng hợp từ giao dịch Photobooth.' : 'Dữ liệu ở đây chỉ thuộc khu Photobooth.'}</p></div><div className="pb-actions">
         {['overview', 'transactions', 'cash', 'ptb'].includes(tab) && <label className="pb-date"><CalendarDays size={16} /><input type="date" value={date} onChange={event => { setDate(event.target.value); if (tab === 'transactions') setForm(current => ({ ...current, sale_date: event.target.value })); }} /></label>}
         {tab === 'finance' && <label className="pb-date"><CalendarDays size={16} /><input type="month" value={month} onChange={event => setMonth(event.target.value)} /></label>}
-        {!['overview', 'transactions', 'reports', 'finance', 'cash', 'ptb', 'customers'].includes(tab) && <button className="pb-primary" onClick={openCreate}><Plus size={17} /> Thêm mới</button>}
+        {!isInvestor && !['overview', 'transactions', 'reports', 'finance', 'cash', 'ptb', 'customers', 'attendance'].includes(tab) && <button className="pb-primary" onClick={openCreate}><Plus size={17} /> Thêm mới</button>}
       </div></div>
       {error && <div className="pb-error" role="alert">{error}<button onClick={() => setError('')} aria-label="Đóng thông báo"><X size={15} /></button></div>}
       {loading ? <div className="pb-loading">Đang tải dữ liệu Photobooth...</div> : tab === 'overview' ? <>
@@ -172,15 +180,16 @@ export default function Photobooth() {
         <div className="pb-grid-two"><section className="pb-card"><div className="pb-card-head"><div><h3>Giao dịch gần đây</h3><p>{data?.metrics?.transactions || 0} giao dịch trong ngày</p></div><Link to="/photobooth/transactions">Xem tất cả <ArrowRight size={14} /></Link></div>{data?.recent?.length ? <div className="pb-list">{data.recent.map(item => <div className="pb-list-row" key={item.id}><div className="pb-avatar"><Camera size={17} /></div><div><strong>{item.service_name}</strong><span>{new Date(item.happened_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' })} · {sourceModes[item.source_mode] || paymentLabels[item.payment_method]}</span></div><b>{money(item.total_amount)}</b></div>)}</div> : <Empty title="Chưa có giao dịch hôm nay" detail="Ghi nhận giao dịch đầu tiên tại mục Thu tiền khách." />}</section>
           <section className="pb-card"><div className="pb-card-head"><div><h3>Ca làm hôm nay</h3><p>Phân công nhân viên</p></div><Link to="/photobooth/shifts">Xem ca <ArrowRight size={14} /></Link></div>{data?.shifts?.length ? <div className="pb-list">{data.shifts.map(item => <div className="pb-list-row" key={item.id}><div className="pb-avatar purple"><Users size={17} /></div><div><strong>{item.staff_name}</strong><span>{item.start_time?.slice(0, 5)} – {item.end_time?.slice(0, 5)}</span></div><em className="pb-pill">{statusLabels[item.status]}</em></div>)}</div> : <Empty title="Chưa xếp ca" detail="Thêm nhân viên rồi tạo ca làm để theo dõi lịch trực." />}</section></div>
         <div className="pb-grid-two"><section className="pb-card"><div className="pb-card-head"><h3>Bảng giá</h3><Link to="/photobooth/services">Quản lý <ArrowRight size={14} /></Link></div>{data?.services?.length ? data.services.slice(0, 5).map(item => <div className="pb-mini-row" key={item.id}><span>{item.name}</span><b>{money(item.price)}</b></div>) : <Empty title="Chưa có dịch vụ" detail="Thiết lập giá trước khi thu tiền khách." />}</section><section className="pb-card"><div className="pb-card-head"><h3>Quà tặng</h3><Link to="/photobooth/gifts">Kho quà <ArrowRight size={14} /></Link></div>{data?.gifts?.length ? data.gifts.slice(0, 5).map(item => <div className="pb-mini-row" key={item.id}><span>{item.name}</span><b className={item.quantity <= item.low_stock_threshold ? 'pb-alert-text' : ''}>{item.quantity} còn</b></div>) : <Empty title="Kho quà trống" detail="Thêm quà tặng để theo dõi số lượng." />}</section></div>
-      </> : tab === 'cash' ? <CashPanel date={date} data={cashData} staff={staff} refresh={refresh} setError={setError} />
-        : tab === 'ptb' ? <PtbPanel date={date} data={ptbData} staff={staff} refresh={refresh} setError={setError} />
+      </> : tab === 'attendance' ? <AttendancePanel readOnly={isInvestor} />
+        : tab === 'cash' ? <CashPanel date={date} data={cashData} staff={staff} refresh={refresh} setError={setError} readOnly={isInvestor} />
+        : tab === 'ptb' ? <PtbPanel date={date} data={ptbData} staff={staff} refresh={refresh} setError={setError} readOnly={isInvestor} />
         : tab === 'customers' ? <CustomersPanel customers={customers} />
-        : tab === 'finance' ? <FinancePanel month={month} data={finance} expenses={expenses} staff={staff} refresh={refresh} setError={setError} />
+        : tab === 'finance' ? <FinancePanel month={month} data={finance} expenses={expenses} staff={staff} refresh={refresh} setError={setError} readOnly={isInvestor} />
         : tab === 'reports' ? <ReportsPanel from={reportFrom} to={reportTo} setFrom={setReportFrom} setTo={setReportTo} report={report} orders={reportOrders} />
-        : tab === 'transactions' ? <TransactionsPanel date={date} rows={rows} form={form} setForm={setForm} services={services} staff={staff} gifts={gifts} busy={busy} onSave={save} onVoid={voidOrder} />
-        : <section className="pb-card pb-table-card"><div className="pb-card-head"><div><h3>{activeTitle}</h3><p>{rows.length} bản ghi</p></div></div><DataTable rows={rows} columns={configs[tab]?.columns || []} action={row => <div className="pb-row-actions">{tab === 'gifts' && <button onClick={() => { setForm({ delta: '', reason: '' }); setModal({ mode: 'adjust', row }); }}>Nhập / xuất</button>}<button onClick={() => openEdit(row)}>Sửa</button></div>} /></section>}
+        : tab === 'transactions' ? <TransactionsPanel date={date} rows={rows} form={form} setForm={setForm} services={services} staff={staff} gifts={gifts} busy={busy} onSave={save} onVoid={voidOrder} readOnly={isInvestor} />
+        : <section className="pb-card pb-table-card"><div className="pb-card-head"><div><h3>{activeTitle}</h3><p>{rows.length} bản ghi</p></div></div><DataTable rows={rows} columns={configs[tab]?.columns || []} action={isInvestor ? undefined : row => <div className="pb-row-actions">{tab === 'gifts' && <button onClick={() => { setForm({ delta: '', reason: '' }); setModal({ mode: 'adjust', row }); }}>Nhập / xuất</button>}<button onClick={() => openEdit(row)}>Sửa</button></div>} /></section>}
     </div>
-    {modal && <Modal title={modal.mode === 'adjust' ? `Điều chỉnh tồn · ${modal.row.name}` : `${modal.mode === 'edit' ? 'Sửa' : 'Thêm'} ${configs[tab]?.title || ''}`} onClose={() => { setModal(null); setError(''); }}>
+    {modal && !isInvestor && <Modal title={modal.mode === 'adjust' ? `Điều chỉnh tồn · ${modal.row.name}` : `${modal.mode === 'edit' ? 'Sửa' : 'Thêm'} ${configs[tab]?.title || ''}`} onClose={() => { setModal(null); setError(''); }}>
       {error && <div className="pb-error" role="alert">{error}</div>}
       {modal.mode === 'adjust' ? <form className="pb-form" onSubmit={event => { event.preventDefault(); adjustGift(modal.row); }}><p>Hiện có <strong>{modal.row.quantity}</strong> phần. Nhập số dương để thêm, số âm để xuất.</p><Field field={['delta', 'Thay đổi số lượng', 'number', true]} value={form.delta} onChange={(key, value) => setForm({ ...form, [key]: value })} /><Field field={['reason', 'Lý do', 'text']} value={form.reason} onChange={(key, value) => setForm({ ...form, [key]: value })} /><button className="pb-primary" disabled={busy}>Lưu tồn kho</button></form>
         : <form className="pb-form" onSubmit={save}>{configs[tab]?.fields.map(field => <Field key={field[0]} field={field} staff={staff} value={form[field[0]]} onChange={(key, value) => setForm({ ...form, [key]: value })} />)}<div className="pb-form-actions"><button type="button" onClick={() => setModal(null)}>Hủy</button><button className="pb-primary" disabled={busy}>{busy ? 'Đang lưu...' : 'Lưu thay đổi'}</button></div></form>}
@@ -188,15 +197,15 @@ export default function Photobooth() {
   </div>;
 }
 
-function TransactionsPanel({ date, rows, form, setForm, services, staff, gifts, busy, onSave, onVoid }) {
+function TransactionsPanel({ date, rows, form, setForm, services, staff, gifts, busy, onSave, onVoid, readOnly }) {
   const displayRows = rows.map(row => ({
     ...row,
     source_label: sourceModes[row.source_mode] || sourceModes.counter,
     machine_in: ['machine_self', 'machine_exchange'].includes(row.source_mode) ? row.total_amount : 0
   }));
   return <div className="pb-grid-two pb-order-layout">
-    <section className="pb-card"><h3>Thu tiền khách · Tạo đơn theo nguồn tiền</h3><OrderForm form={form} setForm={setForm} services={services} staff={staff} gifts={gifts} busy={busy} onSave={onSave} onCancel={() => setForm(newOrder(date))} resetLabel="Nhập lại" /></section>
-    <section className="pb-card pb-table-card"><div className="pb-card-head"><div><h3>Danh sách đơn hàng</h3><p>{rows.length} đơn ngày {dayLabel(date)}</p></div></div><DataTable rows={displayRows} columns={[["source_label", "Nguồn thu"], ["customer_name", "Khách hàng"], ["service_name", "Dịch vụ"], ["total_amount", "Doanh thu"], ["cash_in_drawer", "Quầy +/−"], ["machine_in", "Máy +"], ["transfer_received", "Chuyển khoản"], ["staff_name", "Nhân viên"], ["status", "Trạng thái"]]} action={row => row.status === 'completed' && <button className="pb-link-danger" onClick={() => onVoid(row)}>Hủy đơn</button>} /></section>
+    {!readOnly && <section className="pb-card"><h3>Thu tiền khách · Tạo đơn theo nguồn tiền</h3><OrderForm form={form} setForm={setForm} services={services} staff={staff} gifts={gifts} busy={busy} onSave={onSave} onCancel={() => setForm(newOrder(date))} resetLabel="Nhập lại" /></section>}
+    <section className="pb-card pb-table-card"><div className="pb-card-head"><div><h3>Danh sách đơn hàng</h3><p>{rows.length} đơn ngày {dayLabel(date)}</p></div></div><DataTable rows={displayRows} columns={[["source_label", "Nguồn thu"], ["customer_name", "Khách hàng"], ["service_name", "Dịch vụ"], ["total_amount", "Doanh thu"], ["cash_in_drawer", "Quầy +/−"], ["machine_in", "Máy +"], ["transfer_received", "Chuyển khoản"], ["staff_name", "Nhân viên"], ["status", "Trạng thái"]]} action={readOnly ? undefined : row => row.status === 'completed' && <button className="pb-link-danger" onClick={() => onVoid(row)}>Hủy đơn</button>} /></section>
   </div>;
 }
 

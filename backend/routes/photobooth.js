@@ -1,7 +1,7 @@
 const express = require('express');
 const { pool } = require('../utils/db');
-const { authenticate } = require('../middleware/auth');
-const { requirePhotoboothAccess } = require('../middleware/photoboothAccess');
+const { authenticate, hasRole } = require('../middleware/auth');
+const { requirePhotoboothAccess, requirePhotoboothReports } = require('../middleware/photoboothAccess');
 
 const router = express.Router();
 router.use(authenticate, requirePhotoboothAccess);
@@ -77,7 +77,7 @@ router.get('/overview', run(async (req, res) => {
   res.json({ date, metrics: day.rows[0], recent: recent.rows, shifts: shifts.rows, services: services.rows, gifts: gifts.rows, trend: trend.rows, mix: mix.rows, channels: channels.rows });
 }));
 
-router.get('/reports', run(async (req, res) => {
+router.get('/reports', requirePhotoboothReports, run(async (req, res) => {
   const { from, to } = req.query;
   if (!validDate(from) || !validDate(to) || from > to) return fail(res, 'Khoảng ngày không hợp lệ.');
   const [daily, services, payments, sources] = await Promise.all([
@@ -93,6 +93,7 @@ router.get('/reports', run(async (req, res) => {
 
 router.get('/transactions', run(async (req, res) => {
   const { date, from, to } = req.query;
+  if ((!date || from || to) && !hasRole(req.user, 'admin', 'investor')) return res.status(403).json({ error: 'Bạn không có quyền xem báo cáo Photobooth.' });
   if (date && !validDate(date)) return fail(res, 'Ngày không hợp lệ.');
   if ((from || to) && (!validDate(from) || !validDate(to) || from > to)) return fail(res, 'Khoảng ngày không hợp lệ.');
   const where = date ? 'WHERE t.sale_date=$1::date' : from ? 'WHERE t.sale_date BETWEEN $1::date AND $2::date' : '';

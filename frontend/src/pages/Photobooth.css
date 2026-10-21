@@ -37,6 +37,8 @@
 .pb-stat strong{font-size:22px;line-height:1.25;margin:5px 0;font-weight:800;color:#3e3440;white-space:nowrap}
 .pb-stat-note{font-size:10px;color:#b6a5b0}
 .pb-grid-two{display:grid;grid-template-columns:1.35fr 1fr;gap:15px}
+.pb-readonly section:has(>form),.pb-readonly .pb-link-danger{display:none}
+.pb-readonly .pb-grid-two:has(>section>form){grid-template-columns:1fr}
 .pb-grid-three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:15px}
 .pb-card{min-width:0;background:#fff;border:1px solid #f3e7ee;border-radius:18px;padding:19px 20px;box-shadow:0 5px 22px #8a527010}
 .pb-card>h3,.pb-card-head h3{font-size:14px;font-weight:800;color:#443545;margin:0}

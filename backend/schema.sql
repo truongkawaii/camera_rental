@@ -649,6 +649,20 @@ CREATE TABLE IF NOT EXISTS pb_expenses (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_pb_expenses_date ON pb_expenses(expense_date);
+CREATE TABLE IF NOT EXISTS pb_attendance (
+  id SERIAL PRIMARY KEY,
+  staff_id INTEGER NOT NULL REFERENCES pb_staff(id),
+  work_date DATE NOT NULL,
+  status VARCHAR(20) NOT NULL CHECK (status IN ('present','half_day','leave','absent')),
+  check_in TIME,
+  check_out TIME,
+  note TEXT,
+  recorded_by VARCHAR(160),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (staff_id, work_date),
+  CHECK (check_in IS NULL OR check_out IS NULL OR check_out > check_in)
+);
+CREATE INDEX IF NOT EXISTS idx_pb_attendance_date ON pb_attendance(work_date);
 ALTER TABLE pb_expenses ADD COLUMN IF NOT EXISTS staff_id INTEGER REFERENCES pb_staff(id);
 ALTER TABLE pb_expenses DROP CONSTRAINT IF EXISTS pb_expenses_category_check;
 ALTER TABLE pb_expenses ADD CONSTRAINT pb_expenses_category_check CHECK (category IN ('other','ads','rent','salary'));

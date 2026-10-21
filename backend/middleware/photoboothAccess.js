@@ -3,7 +3,7 @@ const { hasRole } = require('./auth');
 
 async function requirePhotoboothAccess(req, res, next) {
   if (hasRole(req.user, 'admin')) return next();
-  if (!['saler', 'camera_manager', 'driver'].some(role => hasRole(req.user, role))) return res.status(403).json({ error: 'Bạn chưa được cấp quyền truy cập Photobooth.' });
+  if (!['saler', 'camera_manager', 'driver', 'investor'].some(role => hasRole(req.user, role))) return res.status(403).json({ error: 'Bạn chưa được cấp quyền truy cập Photobooth.' });
   if (!Number.isSafeInteger(Number(req.user?.id))) return res.status(403).json({ error: 'Bạn chưa được cấp quyền truy cập Photobooth.' });
   try {
     const result = await pool.query(`SELECT 1 FROM pb_user_access a JOIN users u ON u.id=a.user_id
@@ -13,4 +13,9 @@ async function requirePhotoboothAccess(req, res, next) {
   } catch (error) { next(error); }
 }
 
-module.exports = { requirePhotoboothAccess };
+function requirePhotoboothReports(req, res, next) {
+  if (!hasRole(req.user, 'admin', 'investor')) return res.status(403).json({ error: 'Bạn không có quyền xem báo cáo Photobooth.' });
+  next();
+}
+
+module.exports = { requirePhotoboothAccess, requirePhotoboothReports };

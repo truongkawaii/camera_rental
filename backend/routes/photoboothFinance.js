@@ -1,7 +1,7 @@
 const express = require('express');
 const { pool } = require('../utils/db');
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const { requirePhotoboothAccess } = require('../middleware/photoboothAccess');
+const { requirePhotoboothAccess, requirePhotoboothReports } = require('../middleware/photoboothAccess');
 
 const router = express.Router();
 router.use(authenticate, requirePhotoboothAccess);
@@ -149,7 +149,31 @@ router.get('/customers', run(async (_req, res) => {
   res.json(result.rows);
 }));
 
-router.get('/expenses', run(async (req, res) => {
+router.get('/attendance', run(async (req, res) => {
+  if (!monthOK(req.query.month)) return fail(res, 'Tháng không hợp lệ.');
+  const result = await pool.query(`SELECT a.*, a.work_date::text AS work_date,
+    to_char(a.check_in,'HH24:MI') AS check_in, to_char(a.check_out,'HH24:MI') AS check_out,
+    s.name AS staff_name FROM pb_attendance a JOIN pb_staff s ON s.id=a.staff_id
+    WHERE a.work_date >= ($1 || '-01')::date AND a.work_date < (($1 || '-01')::date + interval '1 month')
+    ORDER BY a.work_date DESC,s.name`, [req.query.month]);
+  res.json(result.rows);
+}));
+
+router.post('/attendance', run(async (req, res) => {
+  const b = req.body || {};
+  if (!idOK(b.staff_id) || !dateOK(b.work_date) || !['present', 'half_day', 'leave', 'absent'].includes(b.status)) return fail(res, 'Thông tin chấm công không hợp lệ.');
+  const timeOK = value => value == null || value === '' || /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+  if (!timeOK(b.check_in) || !timeOK(b.check_out) || (b.check_in && b.check_out && b.check_out <= b.check_in)) return fail(res, 'Giờ ra phải sau giờ vào.');
+  if (['leave', 'absent'].includes(b.status) && (b.check_in || b.check_out)) return fail(res, 'Ngày nghỉ hoặc vắng không có giờ vào/ra.');
+  const result = await pool.query(`INSERT INTO pb_attendance(staff_id,work_date,status,check_in,check_out,note,recorded_by)
+    VALUES($1,$2,$3,$4,$5,$6,$7)
+    ON CONFLICT(staff_id,work_date) DO UPDATE SET status=EXCLUDED.status,check_in=EXCLUDED.check_in,
+      check_out=EXCLUDED.check_out,note=EXCLUDED.note,recorded_by=EXCLUDED.recorded_by,updated_at=NOW()
+    RETURNING *,work_date::text AS work_date`, [b.staff_id, b.work_date, b.status, b.check_in || null, b.check_out || null, short(b.note, 1000) || null, short(req.user.username)]);
+  res.json(result.rows[0]);
+}));
+
+router.get('/expenses', requirePhotoboothReports, run(async (req, res) => {
   if (!monthOK(req.query.month)) return fail(res, 'Tháng không hợp lệ.');
   const result = await pool.query("SELECT e.*,e.expense_date::text AS expense_date,s.name AS staff_name FROM pb_expenses e LEFT JOIN pb_staff s ON s.id=e.staff_id WHERE to_char(e.expense_date,'YYYY-MM')=$1 AND e.voided_at IS NULL ORDER BY e.expense_date DESC,e.id DESC", [req.query.month]);
   res.json(result.rows);
@@ -174,7 +198,7 @@ router.delete('/expenses/:id', run(async (req, res) => {
   res.json({ id: result.rows[0].id });
 }));
 
-router.get('/finance', run(async (req, res) => {
+router.get('/finance', requirePhotoboothReports, run(async (req, res) => {
   if (!monthOK(req.query.month)) return fail(res, 'Tháng không hợp lệ.');
   const [sales, expenses] = await Promise.all([
     pool.query(`SELECT sale_date::text AS day, COUNT(*)::int AS orders, SUM(total_amount)::float AS revenue,
@@ -204,12 +228,12 @@ router.get('/finance', run(async (req, res) => {
 const backupTables = [
   'pb_services', 'pb_gifts', 'pb_assets', 'pb_staff',
   'pb_shifts', 'pb_tasks', 'pb_incidents', 'pb_transactions',
-  'pb_gift_movements', 'pb_cash_movements', 'pb_cash_closures', 'pb_machine_movements', 'pb_machine_counts', 'pb_expenses'
+  'pb_gift_movements', 'pb_cash_movements', 'pb_cash_closures', 'pb_machine_movements', 'pb_machine_counts', 'pb_expenses', 'pb_attendance'
 ];
 const backupDateColumns = {
   pb_transactions: ['sale_date'], pb_shifts: ['work_date'], pb_tasks: ['work_date'],
   pb_cash_movements: ['movement_date'], pb_cash_closures: ['close_date'],
-  pb_machine_movements: ['movement_date'], pb_machine_counts: ['count_date'], pb_expenses: ['expense_date']
+  pb_machine_movements: ['movement_date'], pb_machine_counts: ['count_date'], pb_expenses: ['expense_date'], pb_attendance: ['work_date']
 };
 
 router.get('/backup', requireAdmin, run(async (_req, res) => {
@@ -219,14 +243,15 @@ router.get('/backup', requireAdmin, run(async (_req, res) => {
     for (const column of backupDateColumns[table] || []) if (copy[column] != null) copy[column] = vietnamDate(copy[column]);
     return copy;
   });
-  res.json({ type: 'snappro-photobooth-backup', version: 2, exported_at: new Date().toISOString(), data });
+  res.json({ type: 'snappro-photobooth-backup', version: 3, exported_at: new Date().toISOString(), data });
 }));
 
 router.post('/restore', requireAdmin, run(async (req, res) => {
   const snapshot = req.body;
-  if (snapshot?.type !== 'snappro-photobooth-backup' || ![1, 2].includes(snapshot.version) || !snapshot.data || typeof snapshot.data !== 'object') return fail(res, 'File sao lưu Photobooth không hợp lệ.');
+  if (snapshot?.type !== 'snappro-photobooth-backup' || ![1, 2, 3].includes(snapshot.version) || !snapshot.data || typeof snapshot.data !== 'object') return fail(res, 'File sao lưu Photobooth không hợp lệ.');
   const data = { ...snapshot.data };
   if (snapshot.version === 1) for (const table of ['pb_machine_movements', 'pb_machine_counts']) data[table] = [];
+  if (snapshot.version < 3) data.pb_attendance = [];
   if (backupTables.some(table => !Array.isArray(data[table]) || data[table].length > 100000)) return fail(res, 'File sao lưu thiếu bảng hoặc có quá nhiều bản ghi.');
   const client = await pool.connect();
   try {

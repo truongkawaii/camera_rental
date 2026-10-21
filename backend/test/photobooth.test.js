@@ -20,13 +20,17 @@ async function withServer(callback) {
   finally { await new Promise(resolve => server.close(resolve)); }
 }
 
-test('Photobooth API rejects unauthenticated and investor requests', async () => {
-  await withServer(async base => {
-    const anonymous = await fetch(`${base}/api/photobooth/services`);
-    assert.equal(anonymous.status, 401);
-    const investor = await fetch(`${base}/api/photobooth/services`, { headers: { Authorization: `Bearer ${token('investor')}` } });
-    assert.equal(investor.status, 403);
-  });
+test('Photobooth API rejects unauthenticated and ungranted investor requests', async () => {
+  const originalQuery = pool.query;
+  pool.query = async () => ({ rowCount: 0, rows: [] });
+  try {
+    await withServer(async base => {
+      const anonymous = await fetch(`${base}/api/photobooth/services`);
+      assert.equal(anonymous.status, 401);
+      const investor = await fetch(`${base}/api/photobooth/services`, { headers: { Authorization: `Bearer ${token('investor')}` } });
+      assert.equal(investor.status, 403);
+    });
+  } finally { pool.query = originalQuery; }
 });
 
 test('sale snapshots the selected unit price and moves gift stock atomically', async () => {
