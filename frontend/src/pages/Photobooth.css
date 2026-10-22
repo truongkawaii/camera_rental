@@ -88,7 +88,7 @@
 .pb-muted{color:#b8acb5}
 .pb-report-filter{display:flex;gap:10px}
 .pb-report-filter label{display:flex;align-items:center;gap:8px;font-size:11px;color:#9d8594;font-weight:700;background:#fff;border:1px solid #f0dfe8;border-radius:10px;padding:7px 10px}
-.pb-report-filter input{border:0;outline:0;color:#584853}
+.pb-report-filter input,.pb-report-filter select{border:0;outline:0;color:#584853;background:transparent;font:inherit}
 .pb-report-stats{grid-template-columns:repeat(3,minmax(0,1fr))}
 .pb-error{background:#fff0ed;border:1px solid #ffd3cb;color:#b34c43;border-radius:10px;padding:10px 13px;font-size:12px;display:flex;justify-content:space-between;gap:10px}
 .pb-error button{border:0;background:transparent;cursor:pointer;color:inherit}

@@ -600,6 +600,8 @@ CREATE TABLE IF NOT EXISTS pb_cash_movements (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_pb_cash_movements_date ON pb_cash_movements(movement_date);
+ALTER TABLE pb_cash_movements ADD COLUMN IF NOT EXISTS shift_label VARCHAR(40);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pb_cash_one_shift_opening ON pb_cash_movements(movement_date,shift_label) WHERE type='opening' AND voided_at IS NULL AND shift_label IS NOT NULL;
 CREATE TABLE IF NOT EXISTS pb_cash_closures (
   id SERIAL PRIMARY KEY,
   close_date DATE NOT NULL,
@@ -611,6 +613,8 @@ CREATE TABLE IF NOT EXISTS pb_cash_closures (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_pb_cash_closures_date ON pb_cash_closures(close_date);
+ALTER TABLE pb_cash_closures ADD COLUMN IF NOT EXISTS shift_label VARCHAR(40);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pb_cash_one_shift_closure ON pb_cash_closures(close_date,shift_label) WHERE shift_label IS NOT NULL;
 CREATE TABLE IF NOT EXISTS pb_machine_movements (
   id SERIAL PRIMARY KEY,
   movement_date DATE NOT NULL,
@@ -625,6 +629,7 @@ CREATE TABLE IF NOT EXISTS pb_machine_movements (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_pb_machine_one_opening ON pb_machine_movements(movement_date) WHERE type='opening' AND voided_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_pb_machine_movements_date ON pb_machine_movements(movement_date);
+ALTER TABLE pb_machine_movements ADD COLUMN IF NOT EXISTS shift_label VARCHAR(40);
 CREATE TABLE IF NOT EXISTS pb_machine_counts (
   id SERIAL PRIMARY KEY,
   count_date DATE NOT NULL,

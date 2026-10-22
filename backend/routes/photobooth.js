@@ -1,6 +1,6 @@
 const express = require('express');
 const { pool } = require('../utils/db');
-const { authenticate, hasRole } = require('../middleware/auth');
+const { authenticate, hasRole, requireAdmin } = require('../middleware/auth');
 const { requirePhotoboothAccess, requirePhotoboothReports } = require('../middleware/photoboothAccess');
 
 const router = express.Router();
@@ -119,6 +119,10 @@ router.post('/transactions', run(async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    if (clean(body.shift_label, 40)) {
+      const closed = await client.query('SELECT 1 FROM pb_cash_closures WHERE close_date=$1 AND shift_label=$2', [saleDate, clean(body.shift_label, 40)]);
+      if (closed.rowCount) { await client.query('ROLLBACK'); return fail(res, 'Ca này đã chốt quỹ, không thể thêm đơn.'); }
+    }
     const service = (await client.query('SELECT * FROM pb_services WHERE id=$1 AND active=true', [body.service_id])).rows[0];
     if (!service) { await client.query('ROLLBACK'); return fail(res, 'Dịch vụ không tồn tại hoặc đã ngừng bán.'); }
     const unitPrice = body.unit_price == null ? Number(service.price) : Number(body.unit_price);
@@ -154,11 +158,15 @@ router.post('/transactions', run(async (req, res) => {
   } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
 }));
 
-router.post('/transactions/:id/void', run(async (req, res) => {
+router.post('/transactions/:id/void', requireAdmin, run(async (req, res) => {
   if (!positiveId(req.params.id) || !clean(req.body?.reason, 500)) return fail(res, 'Vui lòng nhập lý do hủy đơn.');
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    const closed = await client.query(`SELECT 1 FROM pb_transactions t JOIN pb_cash_closures c
+      ON c.close_date=t.sale_date AND c.shift_label=t.shift_label
+      WHERE t.id=$1 AND t.status='completed' LIMIT 1`, [req.params.id]);
+    if (closed.rowCount) { await client.query('ROLLBACK'); return fail(res, 'Ca này đã chốt quỹ, không thể hủy đơn.'); }
     const result = await client.query("UPDATE pb_transactions SET status='voided',void_reason=$2,voided_at=NOW() WHERE id=$1 AND status='completed' RETURNING *", [req.params.id, clean(req.body.reason, 500)]);
     if (!result.rowCount) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Không tìm thấy đơn đang hoạt động.' }); }
     const sale = result.rows[0];

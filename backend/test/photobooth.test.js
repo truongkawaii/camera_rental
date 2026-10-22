@@ -39,6 +39,7 @@ test('sale snapshots the selected unit price and moves gift stock atomically', a
   pool.connect = async () => ({
     query: async (sql, values = []) => {
       queries.push({ sql, values });
+      if (sql.includes('FROM pb_cash_closures')) return { rowCount: 0, rows: [] };
       if (sql.startsWith('SELECT * FROM pb_services')) return { rows: [{ id: 7, name: 'In ảnh', category: 'print', price: '35000' }] };
       if (sql.startsWith('SELECT 1 FROM pb_staff')) return { rowCount: 1 };
       if (sql.startsWith('UPDATE pb_gifts')) return { rowCount: 1 };
@@ -75,6 +76,7 @@ test('insufficient gifts rolls back the sale without inserting revenue', async (
   pool.connect = async () => ({
     query: async sql => {
       queries.push(sql);
+      if (sql.includes('FROM pb_cash_closures')) return { rowCount: 0, rows: [] };
       if (sql.startsWith('SELECT * FROM pb_services')) return { rows: [{ id: 7, name: 'Chụp ảnh', category: 'shoot', price: '50000' }] };
       if (sql.startsWith('UPDATE pb_gifts')) return { rowCount: 0 };
       return { rowCount: 1, rows: [] };
@@ -100,6 +102,7 @@ test('split payment and discount reconcile cash without treating change as reven
   let inserted;
   pool.connect = async () => ({
     query: async (sql, values = []) => {
+      if (sql.includes('FROM pb_cash_closures')) return { rowCount: 0, rows: [] };
       if (sql.startsWith('SELECT * FROM pb_services')) return { rows: [{ id: 7, name: 'Chụp ảnh', category: 'shoot', price: '35000' }] };
       if (sql.startsWith('INSERT INTO pb_transactions')) { inserted = values; return { rows: [{ id: 92, total_amount: '60000' }] }; }
       return { rowCount: 1, rows: [] };
