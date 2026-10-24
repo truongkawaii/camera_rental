@@ -81,7 +81,6 @@ export default function Photobooth() {
   const [report, setReport] = useState(null);
   const [reportOrders, setReportOrders] = useState([]);
   const [cashData, setCashData] = useState(null);
-  const [cashShift, setCashShift] = useState('Ca sáng');
   const [ptbData, setPtbData] = useState(null);
   const [ptbFrom, setPtbFrom] = useState(vnDate());
   const [ptbTo, setPtbTo] = useState(vnDate());
@@ -110,7 +109,7 @@ export default function Photobooth() {
         setReport(summary.data); setReportOrders(orders.data);
       }
       else if (tab === 'cash') {
-        const [cash, people] = await Promise.all([photoboothApi.cash(date, cashShift), photoboothApi.list('staff')]);
+        const [cash, people] = await Promise.all([photoboothApi.cash(date), photoboothApi.list('staff')]);
         setCashData(cash.data); setStaff(people.data);
       } else if (tab === 'ptb') {
         if (ptbFrom > ptbTo) { setError('Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.'); setLoading(false); return; }
@@ -133,7 +132,7 @@ export default function Photobooth() {
         if (results[1]) setStaff(results[1].data);
       }
     } catch (err) { setError(errorText(err)); } finally { setLoading(false); }
-  }, [tab, date, cashShift, ptbFrom, ptbTo, reportFrom, reportTo, month]);
+  }, [tab, date, ptbFrom, ptbTo, reportFrom, reportTo, month]);
   useEffect(() => { refresh(); }, [refresh]);
 
   function openCreate() {
@@ -187,7 +186,7 @@ export default function Photobooth() {
           <section className="pb-card"><div className="pb-card-head"><div><h3>Ca làm hôm nay</h3><p>Phân công nhân viên</p></div><Link to="/photobooth/shifts">Xem ca <ArrowRight size={14} /></Link></div>{data?.shifts?.length ? <div className="pb-list">{data.shifts.map(item => <div className="pb-list-row" key={item.id}><div className="pb-avatar purple"><Users size={17} /></div><div><strong>{item.staff_name}</strong><span>{item.start_time?.slice(0, 5)} – {item.end_time?.slice(0, 5)}</span></div><em className="pb-pill">{statusLabels[item.status]}</em></div>)}</div> : <Empty title="Chưa xếp ca" detail="Thêm nhân viên rồi tạo ca làm để theo dõi lịch trực." />}</section></div>
         <div className="pb-grid-two"><section className="pb-card"><div className="pb-card-head"><h3>Bảng giá</h3><Link to="/photobooth/services">Quản lý <ArrowRight size={14} /></Link></div>{data?.services?.length ? data.services.slice(0, 5).map(item => <div className="pb-mini-row" key={item.id}><span>{item.name}</span><b>{money(item.price)}</b></div>) : <Empty title="Chưa có dịch vụ" detail="Thiết lập giá trước khi thu tiền khách." />}</section><section className="pb-card"><div className="pb-card-head"><h3>Quà tặng</h3><Link to="/photobooth/gifts">Kho quà <ArrowRight size={14} /></Link></div>{data?.gifts?.length ? data.gifts.slice(0, 5).map(item => <div className="pb-mini-row" key={item.id}><span>{item.name}</span><b className={item.quantity <= item.low_stock_threshold ? 'pb-alert-text' : ''}>{item.quantity} còn</b></div>) : <Empty title="Kho quà trống" detail="Thêm quà tặng để theo dõi số lượng." />}</section></div>
       </> : tab === 'attendance' ? <AttendancePanel readOnly={isInvestor} />
-        : tab === 'cash' ? <CashShiftPanel date={date} shift={cashShift} setShift={setCashShift} data={cashData} staff={staff} refresh={refresh} setError={setError} readOnly={isInvestor} />
+        : tab === 'cash' ? <CashShiftPanel date={date} data={cashData} staff={staff} refresh={refresh} setError={setError} readOnly={isInvestor} />
         : tab === 'ptb' ? <PtbPanel date={ptbTo} from={ptbFrom} to={ptbTo} data={ptbData} staff={staff} refresh={refresh} setError={setError} readOnly={isInvestor} />
         : tab === 'customers' ? <CustomersPanel customers={customers} />
         : tab === 'finance' ? <FinancePanel month={month} data={finance} expenses={expenses} staff={staff} refresh={refresh} setError={setError} readOnly={isInvestor} />

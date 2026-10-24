@@ -25,18 +25,17 @@ async function cashSummary(db, date, shift = '') {
   const movements = await db.query(`SELECT type, COALESCE(SUM(amount),0)::float AS amount FROM pb_cash_movements WHERE movement_date=$1::date AND voided_at IS NULL${movementShift} GROUP BY type`, values);
   const machine = await db.query(`SELECT COALESCE(SUM(amount),0)::float AS amount FROM pb_machine_movements WHERE movement_date=$1::date AND type='collect' AND destination='counter' AND voided_at IS NULL${movementShift}`, values);
   const amounts = Object.fromEntries(movements.rows.map(row => [row.type, Number(row.amount)]));
-  const opening = amounts.opening || 0;
+  // Handover openings from later shifts are the same cash, not new inflows.
+  const firstOpening = !shift ? await db.query(`SELECT amount FROM pb_cash_movements
+    WHERE movement_date=$1::date AND type='opening' AND voided_at IS NULL
+    ORDER BY CASE shift_label WHEN 'Ca sáng' THEN 1 WHEN 'Ca chiều' THEN 2 WHEN 'Ca tối' THEN 3 ELSE 0 END,created_at,id LIMIT 1`, [date]) : null;
+  const opening = shift ? amounts.opening || 0 : Number(firstOpening.rows[0]?.amount || 0);
   const salesCash = Number(sales.rows[0]?.amount || 0);
   const otherMoves = (amounts.in || 0) - (amounts.out || 0);
   const machineCollected = Number(machine.rows[0]?.amount || 0);
   const expected = opening + salesCash + otherMoves + machineCollected;
   if (shift) return { opening, salesCash, otherMoves, machineCollected, expected, balance: expected, balanceShift: shift };
-  const latest = await db.query(`SELECT shift_label FROM pb_cash_movements WHERE movement_date=$1::date
-    AND type='opening' AND voided_at IS NULL AND shift_label IS NOT NULL
-    ORDER BY CASE shift_label WHEN 'Ca sáng' THEN 1 WHEN 'Ca chiều' THEN 2 WHEN 'Ca tối' THEN 3 ELSE 4 END DESC,created_at DESC LIMIT 1`, [date]);
-  if (!latest.rowCount) return { opening, salesCash, otherMoves, machineCollected, expected, balance: expected, balanceShift: null };
-  const latestSummary = await cashSummary(db, date, latest.rows[0].shift_label);
-  return { opening, salesCash, otherMoves, machineCollected, expected, balance: latestSummary.expected, balanceShift: latest.rows[0].shift_label };
+  return { opening, salesCash, otherMoves, machineCollected, expected, balance: expected, balanceShift: null };
 }
 
 async function machineSummary(db, date) {

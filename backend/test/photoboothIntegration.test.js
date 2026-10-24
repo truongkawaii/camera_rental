@@ -157,9 +157,10 @@ test('Photobooth order, drawer and finance stay separate from camera rentals', {
     assert.ok((await call('/cash?date=2026-10-21&shift=Ca%20s%C3%A1ng')).unassigned.orders > 0);
     await call('/cash/movements', 'POST', { movement_date: '2026-10-22', shift_label: 'Ca chiều', type: 'opening', amount: 89000, staff_id: staff.id });
     const wholeDayCash = await call('/cash?date=2026-10-22');
-    assert.equal(wholeDayCash.summary.balanceShift, 'Ca chiều');
-    assert.equal(wholeDayCash.summary.balance, 89000);
-    assert.equal((await call('/ptb?date=2026-10-22')).counter.balance, 89000);
+    assert.equal(wholeDayCash.summary.balanceShift, null);
+    assert.equal(wholeDayCash.summary.opening, 50000);
+    assert.equal(wholeDayCash.summary.balance, 90000);
+    assert.equal((await call('/ptb?date=2026-10-22')).counter.balance, 90000);
     const machineCount = await call('/ptb/counts', 'POST', { count_date: '2026-10-21', actual_amount: 65000, staff_id: staff.id });
     assert.equal(Number(machineCount.difference_amount), -5000);
     assert.equal((await call('/finance?month=2026-10')).totals.revenue, 200000);

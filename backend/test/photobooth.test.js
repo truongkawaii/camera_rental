@@ -127,3 +127,30 @@ test('split payment and discount reconcile cash without treating change as reven
     assert.equal(inserted[22], true);
   } finally { pool.connect = originalConnect; }
 });
+
+
+test('daily drawer uses one opening and includes cash across every shift', async () => {
+  const originalQuery = pool.query;
+  pool.query = async sql => {
+    if (sql.includes('SELECT amount FROM pb_cash_movements')) return { rows: [{ amount: 50000 }], rowCount: 1 };
+    if (sql.includes('GROUP BY type')) return { rows: [{ type: 'opening', amount: 139000 }, { type: 'in', amount: 5000 }, { type: 'out', amount: 2000 }] };
+    if (sql.includes('SUM(cash_in_drawer)')) return { rows: [{ amount: 30000 }] };
+    if (sql.includes('SUM(amount)')) return { rows: [{ amount: 10000 }] };
+    return { rows: [], rowCount: 0 };
+  };
+  const app = express();
+  app.use('/finance', require('../routes/photoboothFinance'));
+  const server = app.listen(0);
+  try {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/finance/cash?date=2026-10-22`, { headers: { Authorization: `Bearer ${token('admin')}` } });
+    assert.equal(response.status, 200);
+    const { summary } = await response.json();
+    assert.equal(summary.opening, 50000);
+    assert.equal(summary.expected, 93000);
+    assert.equal(summary.balance, 93000);
+    assert.equal(summary.balanceShift, null);
+  } finally {
+    pool.query = originalQuery;
+    await new Promise(resolve => server.close(resolve));
+  }
+});
