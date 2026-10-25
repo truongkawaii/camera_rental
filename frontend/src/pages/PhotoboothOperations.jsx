@@ -97,7 +97,7 @@ export function PtbPanel({ date, from = date, to = date, data, staff, refresh, s
   const sources = data?.sources || {};
   const rows = Object.entries(sourceModes).map(([key, label]) => {
     const item = sources[key] || {};
-    return [label, item.orders || 0, money(item.revenue), money(item.counter_change), money(key === 'counter' ? 0 : item.revenue), money(item.transfer)];
+    return [label, item.orders || 0, money(item.revenue), money(item.counter_change), money(['machine_self', 'machine_exchange'].includes(key) ? item.revenue : 0), money(item.transfer)];
   });
   async function submitMove(event) {
     event.preventDefault(); setBusy(true); setError('');
