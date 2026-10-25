@@ -577,7 +577,7 @@ ALTER TABLE pb_transactions ADD COLUMN IF NOT EXISTS void_reason TEXT;
 ALTER TABLE pb_transactions ADD COLUMN IF NOT EXISTS voided_at TIMESTAMPTZ;
 ALTER TABLE pb_transactions ADD COLUMN IF NOT EXISTS source_mode VARCHAR(24) NOT NULL DEFAULT 'counter';
 ALTER TABLE pb_transactions DROP CONSTRAINT IF EXISTS pb_transactions_source_mode_check;
-ALTER TABLE pb_transactions ADD CONSTRAINT pb_transactions_source_mode_check CHECK (source_mode IN ('counter','machine_self','machine_exchange'));
+ALTER TABLE pb_transactions ADD CONSTRAINT pb_transactions_source_mode_check CHECK (source_mode IN ('counter','machine_self','machine_exchange','other_bank'));
 ALTER TABLE pb_shifts ADD COLUMN IF NOT EXISTS label VARCHAR(40);
 ALTER TABLE pb_shifts DROP CONSTRAINT IF EXISTS pb_shifts_status_check;
 ALTER TABLE pb_shifts ADD CONSTRAINT pb_shifts_status_check CHECK (status IN ('scheduled','working','done','cancelled'));
@@ -709,3 +709,6 @@ CREATE TABLE IF NOT EXISTS pb_shift_registrations (
   UNIQUE(staff_id,week_start)
 );
 CREATE INDEX IF NOT EXISTS idx_pb_shift_registrations_week ON pb_shift_registrations(week_start,status);
+
+-- Custom bank-transfer sales snapshot their description without a catalog item.
+ALTER TABLE pb_transactions ALTER COLUMN service_id DROP NOT NULL;

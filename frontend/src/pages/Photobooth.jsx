@@ -11,7 +11,7 @@ import CashShiftPanel from './PhotoboothCashShift';
 import './Photobooth.css';
 
 const vnDate = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-const newOrder = date => ({ sale_date: date, customer_name: '', customer_phone: '', source_mode: 'machine_self', service_id: '', quantity: 1, unit_price: '', discount_amount: 0, cash_received: 0, transfer_received: 0, marketing_consent: false, shift_label: 'Ca sáng', customer_count: 1, customer_source: 'walk_in', gift_id: '', gift_quantity: 0, staff_id: '' });
+const newOrder = date => ({ sale_date: date, customer_name: '', customer_phone: '', source_mode: 'machine_self', service_name: '', note: '', service_id: '', quantity: 1, unit_price: '', discount_amount: 0, cash_received: 0, transfer_received: 0, marketing_consent: false, shift_label: 'Ca sáng', customer_count: 1, customer_source: 'walk_in', gift_id: '', gift_quantity: 0, staff_id: '' });
 const money = (value) => `${Number(value || 0).toLocaleString('vi-VN')} ₫`;
 const dayLabel = (date) => date ? new Date(`${String(date).slice(0, 10)}T00:00:00`).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }) : '';
 const categoryLabels = { shoot: 'Chụp ảnh', print: 'In ảnh', other: 'Khác' };
