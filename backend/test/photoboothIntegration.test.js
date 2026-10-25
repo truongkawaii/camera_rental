@@ -26,7 +26,7 @@ test('Photobooth order, drawer and finance stay separate from camera rentals', {
     return response.json();
   }
   try {
-    await pool.query('TRUNCATE pb_services,pb_gifts,pb_assets,pb_staff,pb_shifts,pb_tasks,pb_incidents,pb_transactions,pb_gift_movements,pb_cash_movements,pb_cash_closures,pb_machine_movements,pb_machine_counts,pb_expenses,pb_attendance RESTART IDENTITY');
+    await pool.query('TRUNCATE pb_shift_registrations,pb_services,pb_gifts,pb_assets,pb_staff,pb_shifts,pb_tasks,pb_incidents,pb_transactions,pb_gift_movements,pb_cash_movements,pb_cash_closures,pb_machine_movements,pb_machine_counts,pb_expenses,pb_attendance RESTART IDENTITY');
     const before = (await pool.query('SELECT count(*)::int AS count FROM rentals')).rows[0].count;
     const role = await pool.query("INSERT INTO roles(name) VALUES('saler') ON CONFLICT(name) DO UPDATE SET name=EXCLUDED.name RETURNING id");
     const investorRole = await pool.query("INSERT INTO roles(name) VALUES('investor') ON CONFLICT(name) DO UPDATE SET name=EXCLUDED.name RETURNING id");
@@ -167,7 +167,7 @@ test('Photobooth order, drawer and finance stay separate from camera rentals', {
     assert.equal((await call('/reports?from=2026-10-21&to=2026-10-21')).sources.length, 3);
     const backup = await call('/backup');
     assert.equal(backup.type, 'snappro-photobooth-backup');
-    assert.equal(backup.version, 3);
+    assert.equal(backup.version, 4);
     assert.equal(backup.data.pb_attendance.length, 1);
     assert.equal(backup.data.pb_machine_movements.length, 4);
     assert.equal(backup.data.pb_machine_counts.length, 1);
@@ -190,6 +190,50 @@ test('Photobooth order, drawer and finance stay separate from camera rentals', {
     await call('/restore', 'POST', legacyBackup);
     assert.equal((await call('/ptb?date=2026-10-21')).machine.expected, 140000);
     assert.equal((await pool.query('SELECT count(*)::int AS count FROM rentals')).rows[0].count, before);
+
+    // Weekly registration lifecycle uses a future week, independent of the test date.
+    const { today, addDays } = require('../utils/photoboothSchedule');
+    const now = today();
+    const offset = (8 - new Date(`${now}T00:00:00Z`).getUTCDay()) % 7 || 7;
+    const week = addDays(now, offset);
+    const availability = [{ date: week, slot: 'morning' }, { date: addDays(week, 1), slot: 'evening' }];
+    let schedule = await call(`/shift-registration?week=${week}`);
+    assert.equal(schedule.settings.slots.length, 3);
+    const requestBody = { week, staff_id: staff.id, selections: availability, note: 'Ưu tiên sáng thứ Hai', revision: 0, settings_revision: schedule.settings.revision };
+    let registration = await call('/shift-registration', 'PUT', requestBody);
+    assert.equal(registration.status, 'pending');
+    assert.equal((await call(`/shift-registration?week=${week}`)).shifts.length, 0);
+    const raw = (path, method, body, auth = authorization) => fetch(`${base}${path}`, { method, headers: { Authorization: auth, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    assert.equal((await raw('/shift-registration', 'PUT', requestBody)).status, 409, 'stale registration cannot overwrite');
+    assert.equal((await raw(`/shift-registration/${registration.id}/review`, 'POST', { status: 'approved', revision: registration.revision, note: '' }, staffAuthorization)).status, 403);
+    assert.equal((await raw('/shift-settings', 'PUT', schedule.settings, staffAuthorization)).status, 403);
+    assert.equal((await raw('/shift-registration', 'PUT', { ...requestBody, revision: registration.revision }, investorAuthorization)).status, 403);
+    registration = await call(`/shift-registration/${registration.id}/review`, 'POST', { status: 'rejected', revision: registration.revision, note: 'Bổ sung ca tối' });
+    assert.equal(registration.status, 'rejected');
+    registration = await call('/shift-registration', 'PUT', { ...requestBody, revision: registration.revision, selections: [] });
+    assert.equal(registration.status, 'withdrawn');
+    registration = await call('/shift-registration', 'PUT', { ...requestBody, revision: registration.revision });
+    await call('/shifts', 'POST', { work_date: addDays(week,1), staff_id: staff.id, label: 'Ca tối', start_time: '18:00', end_time: '21:00', status: 'scheduled' });
+    assert.equal((await raw(`/shift-registration/${registration.id}/review`, 'POST', { status: 'approved', revision: registration.revision, note: '' })).status, 409);
+    assert.equal((await call(`/shift-registration?week=${week}`)).shifts.length, 1, 'conflict rolls back every inserted shift');
+    const conflict = (await call(`/shift-registration?week=${week}`)).shifts[0];
+    await call(`/shifts/${conflict.id}`, 'PATCH', { status: 'cancelled' });
+    registration = await call(`/shift-registration/${registration.id}/review`, 'POST', { status: 'approved', revision: registration.revision, note: 'Đồng ý' });
+    schedule = await call(`/shift-registration?week=${week}`);
+    assert.equal(schedule.shifts.length, 2);
+    assert.equal((await raw(`/shift-registration/${registration.id}/review`, 'POST', { status: 'approved', revision: registration.revision, note: '' })).status, 409, 'cannot approve twice');
+    assert.equal((await raw('/shift-registration', 'PUT', { ...requestBody, revision: registration.revision })).status, 400, 'approved availability is immutable');
+    assert.equal((await raw('/shifts', 'POST', { work_date: week, staff_id: staff.id, label: 'Trùng', start_time: '10:00', end_time: '12:00' })).status, 409);
+    assert.equal((await raw('/shifts', 'POST', { work_date: week, staff_id: staff.id, label: 'Ca mới', start_time: '13:00', end_time: '17:00' }, staffAuthorization)).status, 403);
+    const newSettings = await call('/shift-settings', 'PUT', { revision: schedule.settings.revision, slots: schedule.settings.slots.map((slot, i) => i === 0 ? { ...slot, start: '08:00' } : slot) });
+    assert.equal(newSettings.revision, schedule.settings.revision + 1);
+    assert.equal((await call(`/shift-registration?week=${week}`)).registrations[0].selections[0].start, '09:00', 'changing template preserves approved snapshots');
+    const snapshot = await call('/backup');
+    assert.equal(snapshot.data.pb_shift_registrations.length, 1);
+    await call('/restore', 'POST', snapshot);
+    assert.equal((await call(`/shift-registration?week=${week}`)).registrations[0].status, 'approved');
+    assert.equal((await call(`/shift-registration?week=${week}`)).settings.slots[0].start, '08:00');
+
   } finally {
     if (temporaryUsers.length) {
       await pool.query('DELETE FROM pb_user_access WHERE user_id=ANY($1::int[]) OR granted_by=ANY($1::int[])', [temporaryUsers]);

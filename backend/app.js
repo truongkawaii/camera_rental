@@ -112,6 +112,7 @@ app.use('/api/commission-configs', commissionConfigsRouter);
 app.use('/api/collaborators', collaboratorsRouter);
 app.use('/api/sale-transfers', saleTransfersRouter);
 app.use('/api/equipment-transfers', equipmentTransfersRouter);
+app.use('/api/photobooth', require('./routes/photoboothSchedule'));
 app.use('/api/photobooth', photoboothFinanceRouter);
 app.use('/api/photobooth', photoboothRouter);
 app.use('/api/photobooth-access', photoboothAccessRouter);

@@ -303,11 +303,11 @@ router.get('/finance', requirePhotoboothReports, run(async (req, res) => {
 // Parent tables precede dependent tables for foreign-key-safe imports.
 const backupTables = [
   'pb_services', 'pb_gifts', 'pb_assets', 'pb_staff',
-  'pb_shifts', 'pb_tasks', 'pb_incidents', 'pb_transactions',
+  'pb_shift_settings', 'pb_shift_registrations', 'pb_shifts', 'pb_tasks', 'pb_incidents', 'pb_transactions',
   'pb_gift_movements', 'pb_cash_movements', 'pb_cash_closures', 'pb_machine_movements', 'pb_machine_counts', 'pb_expenses', 'pb_attendance'
 ];
 const backupDateColumns = {
-  pb_transactions: ['sale_date'], pb_shifts: ['work_date'], pb_tasks: ['work_date'],
+  pb_shift_registrations: ['week_start'], pb_transactions: ['sale_date'], pb_shifts: ['work_date'], pb_tasks: ['work_date'],
   pb_cash_movements: ['movement_date'], pb_cash_closures: ['close_date'],
   pb_machine_movements: ['movement_date'], pb_machine_counts: ['count_date'], pb_expenses: ['expense_date'], pb_attendance: ['work_date']
 };
@@ -319,15 +319,19 @@ router.get('/backup', requireAdmin, run(async (_req, res) => {
     for (const column of backupDateColumns[table] || []) if (copy[column] != null) copy[column] = vietnamDate(copy[column]);
     return copy;
   });
-  res.json({ type: 'snappro-photobooth-backup', version: 3, exported_at: new Date().toISOString(), data });
+  res.json({ type: 'snappro-photobooth-backup', version: 4, exported_at: new Date().toISOString(), data });
 }));
 
 router.post('/restore', requireAdmin, run(async (req, res) => {
   const snapshot = req.body;
-  if (snapshot?.type !== 'snappro-photobooth-backup' || ![1, 2, 3].includes(snapshot.version) || !snapshot.data || typeof snapshot.data !== 'object') return fail(res, 'File sao lưu Photobooth không hợp lệ.');
+  if (snapshot?.type !== 'snappro-photobooth-backup' || ![1, 2, 3, 4].includes(snapshot.version) || !snapshot.data || typeof snapshot.data !== 'object') return fail(res, 'File sao lưu Photobooth không hợp lệ.');
   const data = { ...snapshot.data };
   if (snapshot.version === 1) for (const table of ['pb_machine_movements', 'pb_machine_counts']) data[table] = [];
   if (snapshot.version < 3) data.pb_attendance = [];
+  if (snapshot.version < 4) {
+    data.pb_shift_settings = [{ id: 1, slots: require('../utils/photoboothSchedule').defaultSlots, revision: 1 }];
+    data.pb_shift_registrations = [];
+  }
   if (backupTables.some(table => !Array.isArray(data[table]) || data[table].length > 100000)) return fail(res, 'File sao lưu thiếu bảng hoặc có quá nhiều bản ghi.');
   const client = await pool.connect();
   try {
@@ -347,7 +351,7 @@ router.post('/restore', requireAdmin, run(async (req, res) => {
         if (!row || typeof row !== 'object' || !idOK(row.id) || seen.has(row.id) || Object.keys(row).some(key => !columns[table].has(key))) throw Object.assign(new Error(`Bản ghi trong ${table} không hợp lệ.`), { status: 400 });
         seen.add(row.id);
         const keys = Object.keys(row);
-        await client.query(`INSERT INTO ${table} (${keys.join(',')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(',')})`, keys.map(key => (backupDateColumns[table] || []).includes(key) && row[key] != null ? vietnamDate(row[key]) : row[key]));
+        await client.query(`INSERT INTO ${table} (${keys.join(',')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(',')})`, keys.map(key => (table === 'pb_shift_settings' && key === 'slots') || (table === 'pb_shift_registrations' && key === 'selections') ? JSON.stringify(row[key]) : (backupDateColumns[table] || []).includes(key) && row[key] != null ? vietnamDate(row[key]) : row[key]));
       }
       const max = data[table].reduce((value, row) => Math.max(value, Number(row.id)), 0);
       const sequence = (await client.query("SELECT pg_get_serial_sequence($1,'id') AS sequence", [table])).rows[0].sequence;

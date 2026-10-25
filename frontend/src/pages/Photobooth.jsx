@@ -6,6 +6,7 @@ import { photoboothApi } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { BackupControls, CustomersPanel, FinancePanel, OrderForm, PtbPanel, ReportsPanel, sourceModes } from './PhotoboothOperations';
 import AttendancePanel from './PhotoboothAttendance';
+import SchedulePanel from './PhotoboothSchedule';
 import CashShiftPanel from './PhotoboothCashShift';
 import './Photobooth.css';
 
@@ -120,6 +121,7 @@ export default function Photobooth() {
         const [summary, items, people] = await Promise.all([photoboothApi.finance(month), photoboothApi.expenses(month), photoboothApi.list('staff')]);
         setFinance(summary.data); setExpenses(items.data); setStaff(people.data);
       }
+      else if (tab === 'shifts') { /* SchedulePanel manages its weekly data. */ }
       else if (tab === 'attendance') { /* AttendancePanel manages its monthly data. */ }
       else if (tab === 'transactions') {
         const [tx, svc, people, inventory] = await Promise.all([photoboothApi.transactions(date), photoboothApi.list('services'), photoboothApi.list('staff'), photoboothApi.list('gifts')]);
@@ -173,7 +175,7 @@ export default function Photobooth() {
         {['overview', 'transactions', 'cash'].includes(tab) && <label className="pb-date"><CalendarDays size={16} /><input type="date" value={date} onChange={event => { setDate(event.target.value); if (tab === 'transactions') setForm(current => ({ ...current, sale_date: event.target.value })); }} /></label>}
         {tab === 'ptb' && <><label className="pb-date">Từ ngày <input type="date" value={ptbFrom} max={ptbTo} onChange={event => setPtbFrom(event.target.value)} /></label><label className="pb-date">Đến ngày <input type="date" value={ptbTo} min={ptbFrom} onChange={event => setPtbTo(event.target.value)} /></label></>}
         {tab === 'finance' && <label className="pb-date"><CalendarDays size={16} /><input type="month" value={month} onChange={event => setMonth(event.target.value)} /></label>}
-        {!isInvestor && !['overview', 'transactions', 'reports', 'finance', 'cash', 'ptb', 'customers', 'attendance'].includes(tab) && <button className="pb-primary" onClick={openCreate}><Plus size={17} /> Thêm mới</button>}
+        {!isInvestor && !['overview', 'transactions', 'reports', 'finance', 'cash', 'ptb', 'customers', 'attendance', 'shifts'].includes(tab) && <button className="pb-primary" onClick={openCreate}><Plus size={17} /> Thêm mới</button>}
       </div></div>
       {error && <div className="pb-error" role="alert">{error}<button onClick={() => setError('')} aria-label="Đóng thông báo"><X size={15} /></button></div>}
       {loading ? <div className="pb-loading">Đang tải dữ liệu Photobooth...</div> : tab === 'overview' ? <>
@@ -186,6 +188,7 @@ export default function Photobooth() {
           <section className="pb-card"><div className="pb-card-head"><div><h3>Ca làm hôm nay</h3><p>Phân công nhân viên</p></div><Link to="/photobooth/shifts">Xem ca <ArrowRight size={14} /></Link></div>{data?.shifts?.length ? <div className="pb-list">{data.shifts.map(item => <div className="pb-list-row" key={item.id}><div className="pb-avatar purple"><Users size={17} /></div><div><strong>{item.staff_name}</strong><span>{item.start_time?.slice(0, 5)} – {item.end_time?.slice(0, 5)}</span></div><em className="pb-pill">{statusLabels[item.status]}</em></div>)}</div> : <Empty title="Chưa xếp ca" detail="Thêm nhân viên rồi tạo ca làm để theo dõi lịch trực." />}</section></div>
         <div className="pb-grid-two"><section className="pb-card"><div className="pb-card-head"><h3>Bảng giá</h3><Link to="/photobooth/services">Quản lý <ArrowRight size={14} /></Link></div>{data?.services?.length ? data.services.slice(0, 5).map(item => <div className="pb-mini-row" key={item.id}><span>{item.name}</span><b>{money(item.price)}</b></div>) : <Empty title="Chưa có dịch vụ" detail="Thiết lập giá trước khi thu tiền khách." />}</section><section className="pb-card"><div className="pb-card-head"><h3>Quà tặng</h3><Link to="/photobooth/gifts">Kho quà <ArrowRight size={14} /></Link></div>{data?.gifts?.length ? data.gifts.slice(0, 5).map(item => <div className="pb-mini-row" key={item.id}><span>{item.name}</span><b className={item.quantity <= item.low_stock_threshold ? 'pb-alert-text' : ''}>{item.quantity} còn</b></div>) : <Empty title="Kho quà trống" detail="Thêm quà tặng để theo dõi số lượng." />}</section></div>
       </> : tab === 'attendance' ? <AttendancePanel readOnly={isInvestor} />
+        : tab === 'shifts' ? <SchedulePanel isAdmin={isAdmin} readOnly={isInvestor} />
         : tab === 'cash' ? <CashShiftPanel date={date} data={cashData} staff={staff} refresh={refresh} setError={setError} readOnly={isInvestor} />
         : tab === 'ptb' ? <PtbPanel date={ptbTo} from={ptbFrom} to={ptbTo} data={ptbData} staff={staff} refresh={refresh} setError={setError} readOnly={isInvestor} />
         : tab === 'customers' ? <CustomersPanel customers={customers} />

@@ -14,6 +14,10 @@ const api = axios.create({
 });
 
 export const photoboothApi = {
+  schedule: (week) => api.get('/photobooth/shift-registration', { params: { week } }),
+  saveRegistration: (data) => api.put('/photobooth/shift-registration', data),
+  reviewRegistration: (id, data) => api.post(`/photobooth/shift-registration/${id}/review`, data),
+  saveShiftSettings: (data) => api.put('/photobooth/shift-settings', data),
   overview: (date) => api.get('/photobooth/overview', { params: { date } }),
   reports: (from, to) => api.get('/photobooth/reports', { params: { from, to } }),
   transactions: (date) => api.get('/photobooth/transactions', { params: { date } }),

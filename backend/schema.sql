@@ -684,3 +684,28 @@ CREATE INDEX IF NOT EXISTS idx_rental_commission_ledger_user ON rental_commissio
 CREATE INDEX IF NOT EXISTS idx_rental_commission_ledger_role ON rental_commission_ledger(source_role, line_type) WHERE is_deleted = false;
 CREATE INDEX IF NOT EXISTS idx_rental_commission_ledger_from_user ON rental_commission_ledger(from_user_id) WHERE is_deleted = false AND from_user_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_rental_commission_ledger_inserted_at ON rental_commission_ledger(inserted_at);
+
+-- Weekly availability is reviewed before becoming an official pb_shifts schedule.
+CREATE TABLE IF NOT EXISTS pb_shift_settings (
+  id INTEGER PRIMARY KEY CHECK (id=1),
+  slots JSONB NOT NULL,
+  revision INTEGER NOT NULL DEFAULT 1
+);
+INSERT INTO pb_shift_settings(id,slots) VALUES(1,'[{"key":"morning","label":"Ca sáng","start":"09:00","end":"13:00"},{"key":"afternoon","label":"Ca chiều","start":"13:00","end":"17:00"},{"key":"evening","label":"Ca tối","start":"17:00","end":"22:00"}]') ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS pb_shift_registrations (
+  id SERIAL PRIMARY KEY,
+  staff_id INTEGER NOT NULL REFERENCES pb_staff(id),
+  week_start DATE NOT NULL CHECK (EXTRACT(ISODOW FROM week_start)=1),
+  selections JSONB NOT NULL CHECK (jsonb_typeof(selections)='array'),
+  note TEXT NOT NULL DEFAULT '',
+  status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected','withdrawn')),
+  revision INTEGER NOT NULL DEFAULT 1,
+  submitted_by TEXT,
+  review_note TEXT,
+  reviewed_by TEXT,
+  reviewed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(staff_id,week_start)
+);
+CREATE INDEX IF NOT EXISTS idx_pb_shift_registrations_week ON pb_shift_registrations(week_start,status);
