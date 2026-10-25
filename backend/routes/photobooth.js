@@ -35,6 +35,7 @@ function validate(resource, body, updating = false) {
     if ((!updating || 'category' in body) && !['shoot', 'print', 'other'].includes(body.category)) return 'Loại dịch vụ không hợp lệ.';
     if ((!updating || 'price' in body) && !nonNegative(body.price)) return 'Giá không hợp lệ.';
   }
+  if (resource === 'gifts' && 'initial_quantity' in body && (!Number.isSafeInteger(Number(body.initial_quantity)) || Number(body.initial_quantity) < 0 || Number(body.initial_quantity) > 2147483647)) return 'Tồn ban đầu phải là số nguyên không âm hợp lệ.';
   if (resource === 'gifts' && 'low_stock_threshold' in body && (!Number.isInteger(Number(body.low_stock_threshold)) || Number(body.low_stock_threshold) < 0)) return 'Ngưỡng tồn kho không hợp lệ.';
   if (resource === 'assets' && 'status' in body && !['active', 'maintenance', 'offline'].includes(body.status)) return 'Trạng thái không hợp lệ.';
   if (resource === 'incidents') {
@@ -200,6 +201,17 @@ router.post('/:resource', run(async (req, res) => {
   const columns = config.columns.filter(column => body[column] !== undefined && !(column === 'staff_id' && body[column] === ''));
   if (req.params.resource === 'shifts' && body.start_time >= body.end_time) return fail(res, 'Giờ kết thúc phải sau giờ bắt đầu.');
   const values = columns.map(column => body[column] === '' ? null : body[column]);
+  if (req.params.resource === 'gifts' && Number(body.initial_quantity || 0) > 0) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const initial = Number(body.initial_quantity);
+      const result = await client.query(`INSERT INTO pb_gifts (${[...columns, 'quantity'].join(',')}) VALUES (${[...values, initial].map((_, i) => `$${i + 1}`).join(',')}) RETURNING *`, [...values, initial]);
+      await client.query('INSERT INTO pb_gift_movements(gift_id,delta,reason) VALUES($1,$2,$3)', [result.rows[0].id, initial, 'Nhập tồn ban đầu']);
+      await client.query('COMMIT');
+      return res.status(201).json(result.rows[0]);
+    } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+  }
   const result = await pool.query(`INSERT INTO ${config.table} (${columns.join(',')}) VALUES (${columns.map((_, i) => `$${i + 1}`).join(',')}) RETURNING *`, values);
   res.status(201).json(result.rows[0]);
 }));

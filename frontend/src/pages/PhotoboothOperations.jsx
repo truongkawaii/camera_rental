@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Download, Plus, Printer, Trash2 } from 'lucide-react';
 import { photoboothApi } from '../api/client';
+import { Link } from 'react-router-dom';
 
 const money = value => `${Number(value || 0).toLocaleString('vi-VN')} ₫`;
 const moneyInput = value => value === '' || value == null ? '' : /^\d+\.0+$/.test(String(value)) ? String(Number(value)) : String(value);
@@ -149,6 +150,9 @@ export function OrderForm({ form, setForm, services, staff, gifts, busy, onSave,
   const missing = sourceMode === 'counter' ? Math.max(0, total - cash - transfer) : 0;
   const cashInDrawer = sourceMode === 'machine_exchange' ? -total : sourceMode === 'machine_self' ? 0 : cash - change;
   const invalidTransfer = sourceMode === 'counter' && transfer > total;
+  const activeGifts = gifts.filter(item => item.active);
+  const selectedGift = activeGifts.find(item => String(item.id) === String(form.gift_id));
+  const giftInvalid = Boolean(form.gift_id) && (!selectedGift || Number(form.gift_quantity) < 1 || !Number.isInteger(Number(form.gift_quantity)) || Number(form.gift_quantity) > Number(selectedGift.quantity));
   const update = (key, value) => setForm(current => ({ ...current, [key]: value }));
   return <form className="pb-inline-form pb-order-form" onSubmit={onSave}>
     <div className="pb-wide pb-notice"><strong>Chọn nguồn thu trước khi lưu.</strong> Tiền khách đưa vào máy PTB được theo dõi riêng với tiền tại quầy. Đổi tiền qua chuyển khoản chỉ ghi doanh thu một lần.</div>
@@ -164,12 +168,14 @@ export function OrderForm({ form, setForm, services, staff, gifts, busy, onSave,
     <label>Nhân viên phụ trách *<select required value={form.staff_id || ''} onChange={e => update('staff_id', e.target.value)}><option value="">Chọn nhân viên</option>{staff.filter(item => item.active).map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
     <label>Ca làm<select value={form.shift_label || ''} onChange={e => update('shift_label', e.target.value)}><option>Ca sáng</option><option>Ca chiều</option><option>Ca tối</option><option value="Ca khác">Ca khác</option></select></label>
     <label>Số khách<input type="number" min="0" step="1" value={form.customer_count} onChange={e => update('customer_count', e.target.value)} /></label>
-    <label>Quà tặng<select value={form.gift_id || ''} onChange={e => update('gift_id', e.target.value)}><option value="">Không tặng</option>{gifts.filter(item => item.active && item.quantity > 0).map(item => <option value={item.id} key={item.id}>{item.name} · còn {item.quantity}</option>)}</select></label>
-    <label>Số quà<input type="number" min="0" step="1" value={form.gift_quantity} onChange={e => update('gift_quantity', e.target.value)} /></label>
+    <label>Quà tặng<select value={form.gift_id || ''} onChange={e => setForm(current => ({ ...current, gift_id: e.target.value, gift_quantity: e.target.value ? 1 : 0 }))}><option value="">Không tặng</option>{activeGifts.map(item => <option value={item.id} key={item.id} disabled={Number(item.quantity) <= 0}>{item.name} · {Number(item.quantity) > 0 ? `còn ${item.quantity}` : 'Hết hàng — cần nhập kho'}</option>)}</select></label>
+    <label>Số quà<input type="number" min={form.gift_id ? 1 : 0} max={selectedGift ? Number(selectedGift.quantity) : 0} step="1" required={Boolean(form.gift_id)} disabled={!form.gift_id} value={form.gift_id ? form.gift_quantity : 0} onChange={e => update('gift_quantity', e.target.value)} /></label>
+    {(!activeGifts.length || activeGifts.some(item => Number(item.quantity) <= 0)) && <div className="pb-wide pb-notice">{!activeGifts.length ? 'Chưa có quà tặng đang sử dụng.' : activeGifts.every(item => Number(item.quantity) <= 0) ? 'Các quà tặng hiện đều hết hàng (tồn kho bằng 0), nên chưa thể chọn để tặng khách.' : 'Quà hết hàng vẫn hiển thị trong danh sách và chưa thể chọn.'} <Link to="/photobooth/gifts" className="pb-gift-stock-link">Mở kho quà tặng</Link> → chọn <strong>Nhập / xuất</strong> để nhập số lượng thực tế.</div>}
+    {giftInvalid && <div className="pb-wide pb-error" role="alert">Quà không còn khả dụng hoặc số lượng tặng vượt tồn kho. Vui lòng kiểm tra lại.</div>}
     <label>Nguồn khách<select value={form.customer_source || ''} onChange={e => update('customer_source', e.target.value)}><option value="walk_in">Khách vãng lai</option><option value="social">Mạng xã hội</option><option value="referral">Giới thiệu</option><option value="other">Khác</option></select></label>
     <label className="pb-check pb-wide"><input type="checkbox" checked={Boolean(form.marketing_consent)} onChange={e => update('marketing_consent', e.target.checked)} /> Khách đồng ý nhận thông tin ưu đãi / marketing</label>
     <div className="pb-wide pb-order-calc"><strong>Doanh thu ghi nhận một lần: {money(total)}</strong>{sourceMode === 'counter' ? <><span>Tiền thối khách: {money(change)} · Còn thiếu: {money(missing)}</span><span>Tiền mặt thực vào quầy: {money(cashInDrawer)}</span></> : sourceMode === 'machine_self' ? <span>Khách tự bỏ {money(total)} vào máy · Quầy: {money(0)} · Máy: +{money(total)}</span> : <span>Khách chuyển khoản {money(total)}; thu ngân đưa tiền mặt vào máy · Quầy: {money(cashInDrawer)} · Máy: +{money(total)} · Ngân hàng: +{money(total)}</span>}{invalidTransfer && <span className="pb-alert-text">Tiền chuyển khoản không được vượt thành tiền.</span>}</div>
-    <div className="pb-form-actions pb-wide"><button type="button" onClick={onCancel}>{resetLabel}</button><button className="pb-primary" disabled={busy || total <= 0 || missing > 0 || invalidTransfer || Number(form.discount_amount) > subtotal}>{busy ? 'Đang lưu...' : 'Lưu đơn hàng'}</button></div>
+    <div className="pb-form-actions pb-wide"><button type="button" onClick={onCancel}>{resetLabel}</button><button className="pb-primary" disabled={busy || giftInvalid || total <= 0 || missing > 0 || invalidTransfer || Number(form.discount_amount) > subtotal}>{busy ? 'Đang lưu...' : 'Lưu đơn hàng'}</button></div>
   </form>;
 }
 

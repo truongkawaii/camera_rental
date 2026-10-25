@@ -66,6 +66,16 @@ test('Photobooth order, drawer and finance stay separate from camera rentals', {
     assert.equal(regrant.status, 200);
     const service = await call('/services', 'POST', { name: 'Chụp khổ dọc', category: 'shoot', price: 70000 });
     const gift = await call('/gifts', 'POST', { name: 'Gấu bông', low_stock_threshold: 1 });
+    const stockedGift = await call('/gifts', 'POST', { name: 'Móc khóa nhập sẵn', active: true, initial_quantity: 8 });
+    assert.equal(Number(stockedGift.quantity), 8);
+    const openingGiftMove = (await pool.query('SELECT delta,reason FROM pb_gift_movements WHERE gift_id=$1', [stockedGift.id])).rows;
+    assert.equal(openingGiftMove.length, 1);
+    assert.equal(openingGiftMove[0].delta, 8);
+    assert.equal(openingGiftMove[0].reason, 'Nhập tồn ban đầu');
+    assert.equal((await fetch(`${base}/gifts`, { method: 'POST', headers: { Authorization: authorization, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Tồn lỗi', initial_quantity: -1 }) })).status, 400);
+    const zeroGift = await call('/gifts', 'POST', { name: 'Chưa nhập hàng', initial_quantity: 0 });
+    assert.equal(Number(zeroGift.quantity), 0);
+
     await call(`/gifts/${gift.id}/adjust`, 'POST', { delta: 2, reason: 'Nhập đầu kỳ' });
     const order = await call('/transactions', 'POST', { sale_date: '2026-10-21', service_id: service.id, quantity: 1, unit_price: 70000, discount_amount: 10000, cash_received: 50000, transfer_received: 30000, customer_name: 'Minh', customer_phone: '0912345678', marketing_consent: true, gift_id: gift.id, gift_quantity: 1 });
     assert.equal(Number(order.total_amount), 60000);
