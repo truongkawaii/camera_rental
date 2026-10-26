@@ -477,6 +477,16 @@ router.post('/commission-preview', authenticate, async (req, res) => {
   }
 
   try {
+    if (!hasRole(req.user, 'admin') && hasRole(req.user, 'saler')) {
+      const rentalId = req.body?.rental_id;
+      if (!Number.isSafeInteger(Number(rentalId)) || Number(rentalId) <= 0) {
+        return res.status(403).json({ error: 'Sale không được xem preview hoa hồng khi tạo đơn thuê mới.' });
+      }
+      const rental = await pool.query('SELECT inserted_by FROM rentals WHERE id=$1 AND is_deleted=false', [rentalId]);
+      if (!rental.rows[0] || Number(rental.rows[0].inserted_by) !== Number(req.user.id)) {
+        return res.status(403).json({ error: 'Bạn không có quyền xem preview hoa hồng của đơn này.' });
+      }
+    }
     const preview = await calculateCommissionPreview(pool, {
       total_price,
       user_id,

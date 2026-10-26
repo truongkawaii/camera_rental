@@ -175,8 +175,8 @@ const RentalModal = ({
   // Always include the currently selected creator user, even if they don't have a creator role
   const canAssignCreator = isAdmin || isCameraManager || isSaler || isDriver;
 
-  // Preview hoa hồng: only inserted_by or admin can see when editing
-  const canViewCommissionPreview = !editingItem || isAdmin || (editingItem && currentUserId && Number(editingItem.inserted_by) === Number(currentUserId));
+  // Sales cannot preview a new rental; existing rental ownership rules still apply.
+  const canViewCommissionPreview = (Boolean(editingItem) || !isSaler || isAdmin) && (!editingItem || isAdmin || (currentUserId && Number(editingItem.inserted_by) === Number(currentUserId)));
   const creatorUserId = formData.user_id || '';
   const baseCreatorUsers = users.filter(isCreatorRole);
   const creatorUsers = React.useMemo(() => {
@@ -393,6 +393,7 @@ const RentalModal = ({
   };
 
   const handlePreviewCommission = async () => {
+    if (!canViewCommissionPreview) return;
     const totalPrice = calculateGrandTotalForPreview();
 
     if (!totalPrice || totalPrice <= 0) {
@@ -405,6 +406,7 @@ const RentalModal = ({
     setPreviewError('');
     try {
       const response = await previewRentalCommission({
+        rental_id: editingItem?.id,
         total_price: totalPrice,
         user_id: formData.user_id || null,
         handover_user_id: formData.handover_user_id || null,
