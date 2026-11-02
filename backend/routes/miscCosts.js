@@ -1,3 +1,4 @@
+const { costBranchAccess, branchTotals } = require('../services/costBranchAccess');
 // routes/miscCosts.js
 // CRUD quản lý chi phí phát sinh
 //
@@ -75,6 +76,8 @@ router.get('/', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Bạn không có quyền xem dữ liệu này.' });
     }
 
+    const access = await costBranchAccess(pool, req.user, req.query.branch_id);
+
     let start, end;
 
     if (month && /^\d{4}-\d{2}$/.test(month)) {
@@ -111,10 +114,11 @@ router.get('/', authenticate, async (req, res) => {
        LEFT JOIN branches b ON mc.branch_id = b.id
        LEFT JOIN users u ON mc.inserted_by = u.id
        WHERE mc.is_deleted = false
+         ${access.filtered ? 'AND mc.branch_id = ANY($3::int[])' : ''}
          AND COALESCE(mc.start_date, mc.date) <= $2
          AND COALESCE(mc.end_date, mc.date) >= $1
        ORDER BY COALESCE(mc.start_date, mc.date) DESC, mc.inserted_at DESC`,
-      [start, end]
+      access.filtered ? [start, end, access.ids] : [start, end]
     );
 
     // Thưởng doanh số của sale (chính sách thi đua, từ 2026-10) tự động tính vào chi phí phát sinh
@@ -122,17 +126,20 @@ router.get('/', authenticate, async (req, res) => {
 
     const allRows = [
       ...result.rows.map(r => ({ ...r, amount: parseFloat(r.amount) })),
-      ...autoRows,
+      ...autoRows.filter(row => !access.filtered || access.ids.includes(Number(row.branch_id))),
     ];
     const total = allRows.reduce((s, r) => s + r.amount, 0);
 
     return res.json({
       misc_costs: allRows,
+      branches: access.branches,
+      branch_totals: branchTotals(allRows, access.branches.filter(b => !req.query.branch_id || Number(b.id) === Number(req.query.branch_id))),
       total_misc_cost: total,
       start,
       end,
     });
   } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
     console.error('Misc costs GET error:', error);
     res.status(500).json({ error: 'Không thể tải dữ liệu chi phí phát sinh' });
   }

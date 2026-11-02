@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
+import React, { useState, useEffect, useRef } from 'react';
 import { getMiscCosts, createMiscCost, updateMiscCost, deleteMiscCost, getBranches, updateSaleMonthOverride } from '../../api/client';
 import { Receipt, Calendar, Plus, Edit, Trash2, X, Building2 } from 'lucide-react';
 import { useToast, ToastContainer } from '../../components/Toast';
@@ -19,6 +20,10 @@ const fmtMiscRange = (item) => {
 };
 
 const MiscCosts = () => {
+  const { isAdmin } = useAuth();
+  const loadVersion = useRef(0);
+  const [selectedBranch, setSelectedBranch] = useState('');
+  const [branchTotals, setBranchTotals] = useState([]);
   const { toasts, removeToast, toast } = useToast();
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   const [miscCosts, setMiscCosts] = useState([]);
@@ -34,33 +39,26 @@ const MiscCosts = () => {
   });
 
   const loadData = async () => {
+    const version = ++loadVersion.current;
+    setMiscCosts([]); setBranchTotals([]);
     setLoadingMisc(true);
     try {
-      const [miscRes, branchesRes] = await Promise.all([
-        getMiscCosts({ month: selectedMonth }).catch(err => {
-          console.error('getMiscCosts error:', err);
-          return { data: { misc_costs: [] } };
-        }),
-        getBranches().catch(err => {
-          console.error('getBranches error:', err);
-          return { data: [] };
-        })
-      ]);
-
-      const costsList = miscRes.data?.misc_costs || (Array.isArray(miscRes.data) ? miscRes.data : []);
-      const branchesList = branchesRes.data?.branches || (Array.isArray(branchesRes.data) ? branchesRes.data : []);
-
-      setMiscCosts(costsList);
-      setBranches(branchesList.map(b => ({ id: b.id, name: b.name })));
+      const response = await getMiscCosts({ month: selectedMonth, branch_id: selectedBranch || undefined });
+      if (version !== loadVersion.current) return;
+      setMiscCosts(response.data.misc_costs || []);
+      setBranches(response.data.branches || []);
+      setBranchTotals(response.data.branch_totals || []);
     } catch (err) {
+      if (version !== loadVersion.current) return;
+      setMiscCosts([]); setBranches([]); setBranchTotals([]);
       console.error(err);
       toast.error('Không thể tải dữ liệu chi phí phát sinh');
     } finally {
-      setLoadingMisc(false);
+      if (version === loadVersion.current) setLoadingMisc(false);
     }
   };
 
-  useEffect(() => { loadData(); }, [selectedMonth]);
+  useEffect(() => { loadData(); }, [selectedMonth, selectedBranch]);
 
   const openMiscModal = (item = null) => {
     setEditingMisc(item);
@@ -159,7 +157,8 @@ const MiscCosts = () => {
             <h1 className="text-2xl md:text-3xl font-extrabold text-gray-900 tracking-tight">Chi phí Phát sinh</h1>
             <p className="text-sm text-gray-500 mt-1">Quản lý các chi phí vận hành khác trong tháng {selectedMonth}</p>
           </div>
-          <div className="flex items-center gap-3 w-full md:w-auto">
+          <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+            <select aria-label="Lọc theo cơ sở" value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)} className="border border-gray-200 rounded-xl bg-white px-3 py-2 text-sm min-w-[180px]"><option value="">Tất cả cơ sở được xem</option>{branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select>
             <ModernMonthPicker value={selectedMonth} onChange={setSelectedMonth} className="w-full md:w-48" />
           </div>
         </div>
@@ -176,6 +175,7 @@ const MiscCosts = () => {
           </div>
         </div>
 
+        <section className="mb-6"><h2 className="text-sm font-bold text-gray-700 mb-3">Chi phí theo cơ sở</h2><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{branchTotals.map(branch => <div key={branch.branch_id ?? 'none'} className="bg-white border border-gray-100 rounded-2xl p-4"><p className="text-sm font-semibold text-gray-700">{branch.branch_name}</p><p className="text-xl font-bold text-amber-600 mt-2">{fmtVND(branch.amount)}</p><p className="text-xs text-gray-400 mt-1">{branch.count} khoản chi</p></div>)}</div></section>
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
              <div className="flex items-center gap-3">
@@ -184,9 +184,9 @@ const MiscCosts = () => {
                 </div>
                 <h3 className="text-lg font-bold text-gray-900">Danh sách chi phí phát sinh</h3>
              </div>
-             <button onClick={() => openMiscModal()} className="flex justify-center items-center gap-2 text-sm font-semibold bg-amber-600 text-white hover:bg-amber-700 px-4 py-2.5 rounded-xl transition-all shadow-sm">
+             {isAdmin && <button onClick={() => openMiscModal()} className="flex justify-center items-center gap-2 text-sm font-semibold bg-amber-600 text-white hover:bg-amber-700 px-4 py-2.5 rounded-xl transition-all shadow-sm">
                 <Plus size={16} /> Thêm chi phí
-             </button>
+             </button>}
           </div>
 
           <div className="overflow-x-auto">
@@ -199,14 +199,14 @@ const MiscCosts = () => {
                   <th className="px-6 py-4 text-xs font-semibold text-gray-400 uppercase">Hạng mục</th>
                   <th className="px-6 py-4 text-xs font-semibold text-gray-400 uppercase text-right">Số tiền</th>
                   <th className="px-6 py-4 text-xs font-semibold text-gray-400 uppercase">Ghi chú</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-400 uppercase text-right">Thao tác</th>
+                  {isAdmin && <th className="px-6 py-4 text-xs font-semibold text-gray-400 uppercase text-right">Thao tác</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {loadingMisc ? (
-                   <tr><td colSpan="7" className="px-6 py-12 text-center text-gray-400">Đang tải...</td></tr>
+                   <tr><td colSpan={isAdmin ? 7 : 6} className="px-6 py-12 text-center text-gray-400">Đang tải...</td></tr>
                 ) : safeMiscList.length === 0 ? (
-                   <tr><td colSpan="7" className="px-6 py-12 text-center text-gray-400">Không có dữ liệu trong tháng này</td></tr>
+                   <tr><td colSpan={isAdmin ? 7 : 6} className="px-6 py-12 text-center text-gray-400">Không có dữ liệu trong tháng này</td></tr>
                 ) : (
                    safeMiscList.map(item => (
                      <tr key={item.id} className="hover:bg-gray-50">
@@ -216,7 +216,7 @@ const MiscCosts = () => {
                         <td className="px-6 py-4 text-sm text-gray-900 font-semibold">{item.category || '-'}</td>
                         <td className="px-6 py-4 text-sm font-bold text-amber-600 text-right">{fmtVND(item.amount)}</td>
                         <td className="px-6 py-4 text-sm text-gray-500 italic max-w-[200px] truncate">{item.notes || '-'}</td>
-                        <td className="px-6 py-4">
+                        {isAdmin && <td className="px-6 py-4">
                            <div className="flex justify-end gap-2">
                              {item.is_auto ? (
                               <button onClick={() => openBonusModal(item)} title={item.is_locked ? 'Tháng đã chốt lương' : 'Sửa thưởng'} disabled={item.is_locked} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-white rounded-lg border border-transparent hover:border-gray-200 disabled:opacity-40 disabled:cursor-not-allowed">
@@ -231,7 +231,7 @@ const MiscCosts = () => {
                              </button>
                              </>)}
                            </div>
-                        </td>
+                        </td>}
                      </tr>
                    ))
                 )}

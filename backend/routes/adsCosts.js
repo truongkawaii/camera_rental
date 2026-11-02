@@ -1,3 +1,4 @@
+const { costBranchAccess, branchTotals } = require('../services/costBranchAccess');
 // routes/adsCosts.js
 // CRUD quản lý chi phí chạy ads theo ngày
 //
@@ -74,6 +75,8 @@ router.get('/', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Bạn không có quyền xem dữ liệu này.' });
     }
 
+    const access = await costBranchAccess(pool, req.user, req.query.branch_id);
+
     let start, end;
 
     if (month && /^\d{4}-\d{2}$/.test(month)) {
@@ -111,10 +114,11 @@ router.get('/', authenticate, async (req, res) => {
        LEFT JOIN branches b ON ac.branch_id = b.id
        LEFT JOIN users u ON ac.inserted_by = u.id
        WHERE ac.is_deleted = false
+         ${access.filtered ? 'AND ac.branch_id = ANY($3::int[])' : ''}
          AND COALESCE(ac.start_date, ac.date) <= $2
          AND COALESCE(ac.end_date, ac.date) >= $1
        ORDER BY COALESCE(ac.start_date, ac.date) DESC, ac.inserted_at DESC`,
-      [start, end]
+      access.filtered ? [start, end, access.ids] : [start, end]
     );
 
     const total = result.rows.reduce((s, r) => s + parseFloat(r.amount), 0);
@@ -124,11 +128,14 @@ router.get('/', authenticate, async (req, res) => {
         ...r,
         amount: parseFloat(r.amount),
       })),
+      branches: access.branches,
+      branch_totals: branchTotals(result.rows, access.branches.filter(b => !req.query.branch_id || Number(b.id) === Number(req.query.branch_id))),
       total_ads_cost: total,
       start,
       end,
     });
   } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
     console.error('Ads costs GET error:', error);
     res.status(500).json({ error: 'Không thể tải dữ liệu chi phí ads' });
   }

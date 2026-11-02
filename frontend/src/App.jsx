@@ -224,8 +224,8 @@ function AuthGate() {
               items: [
                 { to: '/payroll', icon: <Wallet size={18} />, label: 'Bảng Lương', visible: isAdmin },
                 { to: '/sale-admin-transfers', icon: <Send size={18} />, label: 'Sổ Chuyển Tiền', visible: isAdmin },
-                { to: '/ads-costs', icon: <Megaphone size={18} />, label: 'Chi phí Quảng cáo', visible: isAdmin },
-                { to: '/misc-costs', icon: <Receipt size={18} />, label: 'Chi phí Phát sinh', visible: isAdmin },
+                { to: '/ads-costs', icon: <Megaphone size={18} />, label: 'Chi phí Quảng cáo', visible: isAdmin || isInvestor },
+                { to: '/misc-costs', icon: <Receipt size={18} />, label: 'Chi phí Phát sinh', visible: isAdmin || isInvestor },
               ]
             },
             {
@@ -325,8 +325,8 @@ function AuthGate() {
             <Route path="/users"     element={isAdmin ? <UsersPage key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/payroll"   element={isAdmin ? <Payroll key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/sale-admin-transfers" element={isAdmin ? <SaleAdminTransfers key={activeRole} /> : <Navigate to="/rentals" replace />} />
-            <Route path="/ads-costs" element={isAdmin ? <AdsCosts key={activeRole} /> : <Navigate to="/rentals" replace />} />
-            <Route path="/misc-costs" element={isAdmin ? <MiscCosts key={activeRole} /> : <Navigate to="/rentals" replace />} />
+            <Route path="/ads-costs" element={isAdmin || isInvestor ? <AdsCosts key={activeRole} /> : <Navigate to="/rentals" replace />} />
+            <Route path="/misc-costs" element={isAdmin || isInvestor ? <MiscCosts key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/sale-transfers" element={isSaler ? <SaleTransfer key={activeRole} /> : <Navigate to="/" replace />} />
             <Route path="/commission-configs" element={isAdmin ? <CommissionConfigs key={activeRole} /> : <Navigate to="/rentals" replace />} />
             <Route path="/collaborators" element={isAdmin ? <CollaboratorHierarchy key={activeRole} /> : <Navigate to="/rentals" replace />} />
