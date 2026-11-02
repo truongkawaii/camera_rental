@@ -257,6 +257,7 @@ export const uploadSaleTransferImage = (id, imageData, filename = null) => api.p
 });
 export const getAdsCosts = (params) => {
   const query = new URLSearchParams();
+  if (params?.branch_id) query.set('branch_id', params.branch_id);
   if (params?.month) query.set('month', params.month);
   if (params?.startDate) query.set('startDate', params.startDate);
   if (params?.endDate) query.set('endDate', params.endDate);
@@ -268,6 +269,7 @@ export const updateAdsCost = (id, data) => api.put(`/ads-costs/${id}`, data);
 export const deleteAdsCost = (id) => api.delete(`/ads-costs/${id}`);
 export const getMiscCosts = (params) => {
   const query = new URLSearchParams();
+  if (params?.branch_id) query.set('branch_id', params.branch_id);
   if (params?.month) query.set('month', params.month);
   if (params?.startDate) query.set('startDate', params.startDate);
   if (params?.endDate) query.set('endDate', params.endDate);
