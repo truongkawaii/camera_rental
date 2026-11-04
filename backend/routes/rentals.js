@@ -1154,7 +1154,9 @@ router.put('/:id', authenticate, async (req, res) => {
       }
     }
 
-    if (finalHandoverUserId) {
+    // Preserve historical assignments when editing unrelated rental fields.
+    // Validate current driver eligibility only when assigning a different person.
+    if (finalHandoverUserId && finalHandoverUserId !== normalizeOptionalUserId(old.handover_user_id)) {
       const validHandoverDriver = await validateDriverUser(client, finalHandoverUserId);
       if (!validHandoverDriver) {
         await client.query('ROLLBACK');
