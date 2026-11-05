@@ -128,21 +128,12 @@ Khi cần cập nhật khẩn cấp hoặc kiểm tra trực tiếp:
 Khi cần kéo toàn bộ dữ liệu thực tế về máy cá nhân để kiểm thử:
 
 ```bash
-# Bước 1: Dump database từ container server về file local (thực hiện trên máy cá nhân)
-ssh root@163.61.73.126 "docker exec camera_rental_db pg_dump -U postgres --clean --if-exists camera_rental" > /tmp/prod_dump.sql
-
-# Bước 2: Xóa sạch schema cũ trên PostgreSQL local (container camera_rental_db port 5433)
-docker exec -i camera_rental_db psql -U postgres -d camera_rental -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
-
-# Bước 3: Nạp dữ liệu production vào local
-docker exec -i camera_rental_db psql -U postgres -d camera_rental < /tmp/prod_dump.sql
-
-# Bước 4: Chạy migration cập nhật các cột và bảng mới nhất
-cd backend && node utils/db.js
-
-# Bước 5: Xóa file dump tạm
-rm -f /tmp/prod_dump.sql
+docker compose up -d postgres
+./scripts/sync-production-to-local.sh --check
+./scripts/sync-production-to-local.sh
 ```
+
+Script đọc dữ liệu production, đối chiếu bảng/cột với schema local, tạo backup local trong `backups/`, sau đó yêu cầu nhập `GHI DE LOCAL` để ghi đè. Phần ghi đè chạy trong một transaction; khi lỗi, dữ liệu local được rollback. Script chỉ thay dữ liệu ứng dụng trong schema `public`, không thay đổi production hay dữ liệu ở các schema phụ (`auth`, `storage`, `realtime`). Nếu cấu trúc local khác production, hãy cập nhật code và chạy migration local rồi thực hiện lại.
 
 ### 2. Cơ chế sao lưu tự động (Auto Backup)
 * Container `camera_rental_backup` chạy ngầm, thực thi script `scripts/backup-db.sh` vào lúc **02:00 sáng mỗi ngày**.
